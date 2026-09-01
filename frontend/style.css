@@ -7,7 +7,7 @@
   --line-strong: #c9c7bc;
 
   --critical: #b23a2e;
-  --medium: #a8791c;
+  --medium: #8a6510; /* AA-compliant on light bg; keep >=4.5:1 for small text */
   --ok: #3d6b4f;
   --pending: #8a8a82;
 
