@@ -104,6 +104,52 @@ main {
   border-color: var(--ink);
 }
 
+#scan-input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.llm-toggle input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* ---------- Scan status ---------- */
+
+.scan-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -14px 0 24px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.scan-status[hidden] { display: none; }
+
+.scan-status::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.scan-status.error { color: var(--critical); }
+.scan-status.error::before { display: none; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-status::before { animation: none; }
+}
+
 .llm-toggle {
   display: flex;
   align-items: center;
@@ -115,6 +161,10 @@ main {
 
 .btn {
   padding: 11px 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--ink);
   border-radius: 2px;
   background: var(--surface);
@@ -123,16 +173,25 @@ main {
   font-size: 13px;
 }
 
-.btn:hover { background: var(--ink); color: var(--surface); }
+.btn:not(:disabled):hover { background: var(--ink); color: var(--surface); }
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-primary {
   background: var(--ink);
   color: var(--surface);
 }
 
-.btn-primary:hover {
+.btn-primary:not(:disabled):hover {
   background: var(--surface);
   color: var(--ink);
+}
+
+.btn:focus-visible,
+.btn-text:focus-visible,
+.row-open:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 .btn-text {
@@ -140,13 +199,28 @@ main {
   background: none;
   color: var(--ink-soft);
   font-size: 13px;
-  padding: 0;
-  margin-bottom: 20px;
+  padding: 4px 2px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .btn-text:hover { color: var(--ink); }
 
+.btn-text-danger:hover { color: var(--critical); }
+
+.detail-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
 /* ---------- Table ---------- */
+
+.skill-table-wrap {
+  overflow-x: auto;
+}
 
 .skill-table {
   width: 100%;
@@ -181,6 +255,18 @@ main {
   vertical-align: middle;
 }
 
+.row-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .skill-name {
   font-weight: 600;
 }
@@ -191,12 +277,26 @@ main {
   font-size: 11px;
   color: var(--ink-soft);
   margin-top: 2px;
+  word-break: break-all;
 }
 
 .score-badge {
   font-family: var(--mono);
   font-weight: 700;
   font-size: 15px;
+}
+
+.score-badge--critical { color: var(--critical); }
+.score-badge--medium { color: var(--medium); }
+.score-badge--ok { color: var(--ok); }
+.score-badge--pending { color: var(--pending); }
+
+.score-severity {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
 }
 
 .pill {
@@ -256,6 +356,11 @@ main {
   line-height: 1;
 }
 
+.detail-score--critical { color: var(--critical); }
+.detail-score--medium { color: var(--medium); }
+.detail-score--ok { color: var(--ok); }
+.detail-score--pending { color: var(--pending); }
+
 .detail-verdict-label {
   font-size: 12px;
   color: var(--ink-soft);
@@ -277,6 +382,7 @@ main {
 
 .gate-btn {
   padding: 8px 14px;
+  min-height: 44px;
   font-size: 12px;
 }
 
@@ -347,7 +453,16 @@ main {
 
 @media (max-width: 640px) {
   main { padding: 20px; }
-  .skill-table .col-date { display: none; }
+  .topbar { padding: 16px 20px; flex-wrap: wrap; gap: 4px 12px; }
+  .scan-bar { flex-wrap: wrap; }
+  #scan-input { flex-basis: 100%; }
+  .skill-table thead th:last-child,
+  .skill-row td:last-child { display: none; }
+  .skill-table .col-score,
+  .skill-table .col-verdict,
+  .skill-table .col-status { width: auto; }
+  .skill-table thead th,
+  .skill-row td { padding-left: 6px; padding-right: 6px; }
   .detail-head { flex-direction: column; }
   .detail-score-block { text-align: left; margin: 12px 0 0; }
 }

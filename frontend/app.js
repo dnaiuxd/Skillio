@@ -4,12 +4,14 @@ const els = {
   health: document.getElementById("health"),
   scanInput: document.getElementById("scan-input"),
   scanBtn: document.getElementById("scan-btn"),
+  scanStatus: document.getElementById("scan-status"),
   useLlm: document.getElementById("use-llm"),
   listView: document.getElementById("list-view"),
   detailView: document.getElementById("detail-view"),
   skillRows: document.getElementById("skill-rows"),
   emptyState: document.getElementById("empty-state"),
   backBtn: document.getElementById("back-btn"),
+  deleteBtn: document.getElementById("delete-btn"),
   detailName: document.getElementById("detail-name"),
   detailSource: document.getElementById("detail-source"),
   detailScore: document.getElementById("detail-score"),
@@ -26,6 +28,31 @@ function severityClass(score) {
   if (score > 50) return "critical";
   if (score > 20) return "medium";
   return "ok";
+}
+
+function severityWord(score) {
+  if (score == null) return null;
+  if (score > 50) return "high";
+  if (score > 20) return "medium";
+  return "low";
+}
+
+function deriveName(source) {
+  let s = source.replace(/\/+$/, "");
+  if (s.endsWith(".git")) s = s.slice(0, -4);
+  const parts = s.split("/");
+  return parts[parts.length - 1] || s;
+}
+
+function showScanStatus(msg, isError = false) {
+  els.scanStatus.textContent = msg;
+  els.scanStatus.classList.toggle("error", isError);
+  els.scanStatus.hidden = false;
+}
+
+function hideScanStatus() {
+  els.scanStatus.hidden = true;
+  els.scanStatus.classList.remove("error");
 }
 
 function fmtDate(ts) {
@@ -64,20 +91,37 @@ function renderSkillList(skills) {
   for (const s of skills) {
     const tr = document.createElement("tr");
     tr.className = "skill-row";
-    tr.addEventListener("click", () => openDetail(s.id));
 
     const sevClass = severityClass(s.score);
+    const sevWord = severityWord(s.score);
 
     tr.innerHTML = `
       <td>
-        <span class="skill-name">${escapeHtml(s.name)}</span>
-        <span class="skill-source">${escapeHtml(s.source)}</span>
+        <button type="button" class="row-open">
+          <span class="skill-name">${escapeHtml(s.name)}</span>
+          <span class="skill-source">${escapeHtml(s.source)}</span>
+        </button>
       </td>
-      <td><span class="score-badge" style="color:var(--${sevClass})">${s.score ?? "—"}</span></td>
+      <td>
+        <span class="score-badge score-badge--${sevClass}">${s.score ?? "—"}</span>
+        ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
+      </td>
       <td><span class="pill pill-${sevClass}">${escapeHtml(s.verdict || (s.error ? "error" : "—"))}</span></td>
-      <td><span class="pill pill-${gateClass(s.status)}">${s.status}</span></td>
+      <td><span class="pill pill-${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
       <td>${fmtDate(s.last_scanned)}</td>
     `;
+
+    const openBtn = tr.querySelector(".row-open");
+    openBtn.setAttribute("aria-label", `View scan details for ${s.name}`);
+    openBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openDetail(s.id);
+    });
+    tr.addEventListener("click", () => {
+      if (window.getSelection && String(window.getSelection())) return;
+      openDetail(s.id);
+    });
+
     els.skillRows.appendChild(tr);
   }
 }
@@ -99,25 +143,32 @@ async function runScan() {
   const source = els.scanInput.value.trim();
   if (!source) return;
 
-  els.scanBtn.disabled = true;
+  const useLlm = els.useLlm.checked;
+  const controls = [els.scanInput, els.useLlm, els.scanBtn];
+  controls.forEach((el) => (el.disabled = true));
   els.scanBtn.textContent = "Scanning…";
+  showScanStatus(
+    `Scanning ${deriveName(source)}` +
+      (useLlm ? " with LLM review — this can take a few minutes" : "…")
+  );
 
   try {
     const res = await fetch(`${API}/scan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, use_llm: els.useLlm.checked }),
+      body: JSON.stringify({ source, use_llm: useLlm }),
     });
     const skill = await res.json();
+    hideScanStatus();
     await loadSkills();
     if (skill && skill.id != null) {
       openDetail(skill.id);
     }
     els.scanInput.value = "";
   } catch (e) {
-    alert("Scan request failed: " + e.message);
+    showScanStatus(`Scan request failed: ${e.message}`, true);
   } finally {
-    els.scanBtn.disabled = false;
+    controls.forEach((el) => (el.disabled = false));
     els.scanBtn.textContent = "Scan";
   }
 }
@@ -137,8 +188,15 @@ function renderDetail(skill) {
 
   const sevClass = severityClass(skill.score);
   els.detailScore.textContent = skill.score ?? "—";
-  els.detailScore.style.color = `var(--${sevClass})`;
-  els.detailVerdict.textContent = skill.verdict || (skill.error ? "scan failed" : "no verdict");
+  els.detailScore.className = `detail-score detail-score--${sevClass}`;
+
+  const sevWord = severityWord(skill.score);
+  const verdictParts = [];
+  if (sevWord) verdictParts.push(`${sevWord} risk`);
+  if (skill.verdict) verdictParts.push(skill.verdict);
+  else if (skill.error) verdictParts.push("scan failed");
+  else if (!sevWord) verdictParts.push("no verdict");
+  els.detailVerdict.textContent = verdictParts.join(" · ");
 
   els.gateCurrent.textContent = `currently: ${skill.status}`;
 
@@ -197,6 +255,31 @@ async function setGateStatus(status) {
   loadSkills();
 }
 
+async function deleteSkill() {
+  if (currentSkillId == null) return;
+  const name = els.detailName.textContent || "this skill";
+  if (
+    !confirm(
+      `Delete "${name}" from the log? This removes the scan record and its findings.`
+    )
+  ) {
+    return;
+  }
+
+  const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
+  if (!res.ok) {
+    els.detailError.hidden = false;
+    els.detailError.textContent =
+      "Could not delete this record — it may have already been removed. Go back and refresh the log.";
+    return;
+  }
+
+  currentSkillId = null;
+  els.detailView.hidden = true;
+  els.listView.hidden = false;
+  loadSkills();
+}
+
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
 els.scanInput.addEventListener("keydown", (e) => {
@@ -207,6 +290,7 @@ els.backBtn.addEventListener("click", () => {
   els.listView.hidden = false;
   loadSkills();
 });
+els.deleteBtn.addEventListener("click", deleteSkill);
 document.querySelectorAll(".gate-btn").forEach((btn) => {
   btn.addEventListener("click", () => setGateStatus(btn.dataset.status));
 });
