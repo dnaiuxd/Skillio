@@ -32,10 +32,28 @@ export SKILLSPECTOR_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-## 2. Install and run the GUI
+## 2. Get the GUI
 
 ```bash
 git clone https://github.com/dnaiuxd/skills-spector.git
+```
+
+### Run it — one-click (macOS)
+
+Double-click **`SkillSpector.command`** in the repo root. On the first
+run it creates the Python environment and installs dependencies; after
+that it just starts the server and opens the app in your browser. Close
+the Terminal window it opens to stop the server. Double-clicking it
+again while it's already running simply reopens the tab.
+
+To get an app-style icon instead of a browser tab: open
+`http://localhost:8787` in Chrome and choose **⋮ → Cast, save & share →
+Install page as app**, or in Safari 17+ **File → Add to Dock**. That
+window still needs the server running (via the launcher above).
+
+### Run it — manually
+
+```bash
 cd skills-spector/backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -43,9 +61,7 @@ uvicorn app:app --reload --port 8787
 ```
 
 The backend serves the static frontend, so there's nothing else to
-start.
-
-Open **http://localhost:8787**.
+start. Open **http://localhost:8787**.
 
 ## Using it
 
