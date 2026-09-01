@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SkillSpector — Scan Log</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="mark">◆</span>
+    <h1>SkillSpector</h1>
+  </div>
+  <div id="health" class="health">checking installation…</div>
+</header>
+
+<main>
+
+  <section class="scan-bar">
+    <input id="scan-input" type="text" placeholder="Git URL, local path, or .zip — e.g. https://github.com/user/some-skill" />
+    <label class="llm-toggle">
+      <input type="checkbox" id="use-llm" />
+      LLM review
+    </label>
+    <button id="scan-btn" class="btn btn-primary">Scan</button>
+  </section>
+
+  <section id="list-view">
+    <table class="skill-table">
+      <thead>
+        <tr>
+          <th class="col-name">Skill</th>
+          <th class="col-score">Score</th>
+          <th class="col-verdict">Verdict</th>
+          <th class="col-status">Gate</th>
+          <th class="col-date">Last scanned</th>
+        </tr>
+      </thead>
+      <tbody id="skill-rows">
+      </tbody>
+    </table>
+    <p id="empty-state" class="empty-state" hidden>
+      No skills scanned yet. Paste a source above and run a scan.
+    </p>
+  </section>
+
+  <section id="detail-view" hidden>
+    <button id="back-btn" class="btn-text">← Back to log</button>
+
+    <div class="detail-head">
+      <div>
+        <h2 id="detail-name"></h2>
+        <div id="detail-source" class="detail-source"></div>
+      </div>
+      <div class="detail-score-block">
+        <div id="detail-score" class="detail-score">—</div>
+        <div id="detail-verdict" class="detail-verdict-label"></div>
+      </div>
+    </div>
+
+    <div class="gate-bar">
+      <span class="gate-label">Install gate:</span>
+      <button class="btn gate-btn" data-status="approved">Approve</button>
+      <button class="btn gate-btn" data-status="rejected">Reject</button>
+      <button class="btn gate-btn" data-status="pending">Reset</button>
+      <span id="gate-current" class="gate-current"></span>
+    </div>
+
+    <div id="detail-error" class="detail-error" hidden></div>
+
+    <div id="findings-wrap">
+      <h3 class="findings-heading">Findings</h3>
+      <div id="findings-list" class="findings-list"></div>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Local database (regenerated on first run)
+*.db
+*.sqlite3
+*.sqlite3-journal
+*-wal
+*-shm
+
+# Environment / secrets
+.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node (frontend tooling, if added later)
+node_modules/

@@ -1,0 +1,353 @@
+:root {
+  --bg: #faf9f6;
+  --surface: #ffffff;
+  --ink: #1a1a1a;
+  --ink-soft: #6b6b63;
+  --line: #e2e0d8;
+  --line-strong: #c9c7bc;
+
+  --critical: #b23a2e;
+  --medium: #a8791c;
+  --ok: #3d6b4f;
+  --pending: #8a8a82;
+
+  --mono: ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
+  --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+/* ---------- Topbar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.topbar-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.topbar-title .mark {
+  color: var(--critical);
+  font-size: 14px;
+}
+
+.topbar-title h1 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.health {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+}
+
+.health.ok { color: var(--ok); }
+.health.bad { color: var(--critical); }
+
+/* ---------- Main / scan bar ---------- */
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.scan-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+#scan-input {
+  flex: 1;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+#scan-input:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.llm-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.btn {
+  padding: 11px 18px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.btn:hover { background: var(--ink); color: var(--surface); }
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.btn-primary:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.btn-text {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 20px;
+}
+
+.btn-text:hover { color: var(--ink); }
+
+/* ---------- Table ---------- */
+
+.skill-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.skill-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 0 10px 10px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.skill-table .col-score,
+.skill-table .col-verdict,
+.skill-table .col-status,
+.skill-table .col-date {
+  width: 110px;
+}
+
+.skill-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+
+.skill-row:hover { background: var(--surface); }
+
+.skill-row td {
+  padding: 14px 10px;
+  vertical-align: middle;
+}
+
+.skill-name {
+  font-weight: 600;
+}
+
+.skill-source {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.score-badge {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid currentColor;
+}
+
+.pill-critical { color: var(--critical); }
+.pill-medium { color: var(--medium); }
+.pill-ok { color: var(--ok); }
+.pill-pending { color: var(--pending); }
+
+.empty-state {
+  color: var(--ink-soft);
+  padding: 40px 10px;
+  text-align: left;
+}
+
+/* ---------- Detail view ---------- */
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line-strong);
+  margin-bottom: 20px;
+}
+
+#detail-name {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.detail-source {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-soft);
+  word-break: break-all;
+  max-width: 560px;
+}
+
+.detail-score-block {
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: 20px;
+}
+
+.detail-score {
+  font-family: var(--mono);
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.detail-verdict-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+
+.gate-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.gate-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-right: 4px;
+}
+
+.gate-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.gate-current {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detail-error {
+  border: 1px solid var(--critical);
+  color: var(--critical);
+  padding: 14px;
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 24px;
+  white-space: pre-wrap;
+}
+
+.findings-heading {
+  font-size: 13px;
+  text-transform: none;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.finding {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.finding-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.finding-rule {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.finding-location {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.finding-message {
+  margin: 4px 0;
+}
+
+.finding-remediation {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.no-findings {
+  padding: 20px 0;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 640px) {
+  main { padding: 20px; }
+  .skill-table .col-date { display: none; }
+  .detail-head { flex-direction: column; }
+  .detail-score-block { text-align: left; margin: 12px 0 0; }
+}
