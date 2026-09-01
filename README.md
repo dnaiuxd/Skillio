@@ -35,11 +35,15 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ## 2. Install and run the GUI
 
 ```bash
-cd skillspector-gui/backend
+git clone https://github.com/dnaiuxd/skills-spector.git
+cd skills-spector/backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8787
 ```
+
+The backend serves the static frontend, so there's nothing else to
+start.
 
 Open **http://localhost:8787**.
 
@@ -49,7 +53,8 @@ Open **http://localhost:8787**.
   Scan. Re-scanning the same source updates its existing row rather than
   duplicating it, so you get a fresh score after a skill's code changes.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
-  verdict, and gate status at a glance.
+  verdict, and gate status at a glance; the score is color-coded
+  (green ≤ 20, amber 21–50, red > 50).
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
   found, or the source is unreachable).
@@ -60,8 +65,8 @@ Open **http://localhost:8787**.
 
 ## Notes
 
-- Data lives in `backend/skillspector_gui.db` (SQLite) — delete it to
-  reset the log.
+- Data lives in `backend/skillspector_gui.db` (SQLite, git-ignored) —
+  delete it to reset the log.
 - The findings parser expects roughly the shape SkillSpector's `--format
   json` output currently has (`findings[]` with `rule_id`, `severity`,
   `file`, `start_line`, `message`/`explanation`). If a future SkillSpector
@@ -70,6 +75,7 @@ Open **http://localhost:8787**.
   check `app.js`'s `renderFindings` / `_extract_score_and_verdict` if the
   schema drifts.
 - Scans run synchronously (the request blocks until `skillspector`
-  finishes), which is fine for single skills but will feel slow on a big
-  repo with the LLM pass on. If that becomes a problem, the natural next
-  step is a background job queue instead of a blocking POST.
+  finishes) and time out after 5 minutes. That's fine for single skills
+  but will feel slow on a big repo with the LLM pass on. If that becomes
+  a problem, the natural next step is a background job queue instead of a
+  blocking POST.
