@@ -14,7 +14,7 @@ README: git clone + `uv venv` + `make install`).
 import json
 import shutil
 import subprocess
-import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +26,14 @@ from pydantic import BaseModel
 
 import storage
 
-app = FastAPI(title="SkillSpector GUI")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    storage.init_db()
+    yield
+
+
+app = FastAPI(title="SkillSpector GUI", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -116,11 +123,6 @@ def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[st
     if verdict is None and isinstance(score, (int, float)):
         verdict = "do_not_install" if score > 50 else "ok"
     return score, verdict
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    storage.init_db()
 
 
 @app.get("/api/health")
