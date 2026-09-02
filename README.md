@@ -123,13 +123,14 @@ start. Open **http://localhost:8787**.
   (OFL for Montserrat/Open Sans, Apache-2.0 for Yellowtail).
 - Data lives in `backend/skillspector_gui.db` (SQLite, git-ignored) —
   delete it to reset the log.
-- The findings parser expects roughly the shape SkillSpector's `--format
-  json` output currently has (`findings[]` with `rule_id`, `severity`,
-  `file`, `start_line`, `message`/`explanation`). If a future SkillSpector
-  release renames fields, the score/verdict at the top of the report
-  should still be picked up even if individual findings render sparsely —
-  check `app.js`'s `renderFindings` / `_extract_score_and_verdict` if the
-  schema drifts.
+- The parser targets SkillSpector v2.11's `--format json` shape:
+  `risk_assessment.{score,recommendation}` for the headline, and an
+  `issues[]` array (one entry per code location — the GUI collapses
+  repeats of a `finding_id` into one row) with `severity`, `location`,
+  `pattern`, `explanation`, `remediation`. Older top-level keys
+  (`risk_score`, `findings[]`) are still accepted as a fallback. If a
+  later release renames things, check `_extract_score_and_verdict` in
+  `backend/app.py` and `renderFindings` in `frontend/app.js`.
 - Scans run synchronously (the request blocks until `skillspector`
   finishes) and time out after 5 minutes. That's fine for single skills
   but will feel slow on a big repo with the LLM pass on. If that becomes
