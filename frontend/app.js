@@ -35,6 +35,9 @@ const els = {
   findingsList: document.getElementById("findings-list"),
   severityBreakdown: document.getElementById("severity-breakdown"),
   gateCurrent: document.getElementById("gate-current"),
+  gateReset: document.getElementById("gate-reset"),
+  gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
+  gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
 };
 
 const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
@@ -42,6 +45,7 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 let currentSkillId = null;
 let scanning = false;
 let stagedFile = null;
+let gateEditing = false;
 let showingArchived = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -277,6 +281,32 @@ function renderGateCurrent(status) {
     `<span class="gate-current-value gate-current-value--${gateClass(status)}">${escapeHtml(status)}</span>`;
 }
 
+// Active items: Install / Do Not Install, always. Archived items: a lone
+// Reset until you click it — then the decision buttons appear and the
+// permanent-delete escape hatch is hidden while you're re-deciding.
+function updateGateControls(archived) {
+  const locked = archived && !gateEditing;
+  els.gateReset.hidden = !locked;
+  els.gateApprove.hidden = locked;
+  els.gateReject.hidden = locked;
+  els.deleteBtn.hidden = !archived || gateEditing;
+}
+
+function renderDetailSource(src) {
+  src = src || "";
+  els.detailSource.textContent = "";
+  if (/^https?:\/\//i.test(src)) {
+    const a = document.createElement("a");
+    a.href = src;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = `${src} ↗`;
+    els.detailSource.appendChild(a);
+  } else {
+    els.detailSource.textContent = src;
+  }
+}
+
 function escapeHtml(str) {
   if (str == null) return "";
   const div = document.createElement("div");
@@ -379,12 +409,13 @@ async function openDetail(id) {
 
 function renderDetail(skill) {
   els.detailName.textContent = skill.name;
-  els.detailSource.textContent = skill.source;
+  renderDetailSource(skill.source);
 
   // Active items can be archived; archived items can be restored or purged.
   els.archiveBtn.hidden = skill.archived;
   els.restoreBtn.hidden = !skill.archived;
-  els.deleteBtn.hidden = !skill.archived;
+  gateEditing = false;
+  updateGateControls(skill.archived);
 
   const sevClass = severityClass(skill.score);
   els.detailScore.textContent = skill.score ?? "—";
@@ -576,6 +607,13 @@ async function setGateStatus(status) {
   }
 }
 
+// Archived item: reveal the decision buttons and clear the gate back to pending.
+function onGateReset() {
+  gateEditing = true;
+  updateGateControls(true);
+  setGateStatus("pending");
+}
+
 async function setArchived(archived) {
   if (currentSkillId == null) return;
   try {
@@ -630,7 +668,8 @@ els.backBtn.addEventListener("click", () => {
 els.archiveBtn.addEventListener("click", () => setArchived(true));
 els.restoreBtn.addEventListener("click", () => setArchived(false));
 els.deleteBtn.addEventListener("click", deleteSkill);
-document.querySelectorAll(".gate-btn").forEach((btn) => {
+els.gateReset.addEventListener("click", onGateReset);
+document.querySelectorAll(".gate-btn[data-status]").forEach((btn) => {
   btn.addEventListener("click", () => setGateStatus(btn.dataset.status));
 });
 

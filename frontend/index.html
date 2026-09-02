@@ -1,150 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SkillSpector — Agent skill security scanner</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon-192.png" />
-<link rel="manifest" href="manifest.webmanifest" />
-<meta name="theme-color" content="#fcf8f2" />
-<link rel="preload" href="fonts/open-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="fonts/yellowtail-latin.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillSpector — Agent skill security scanner</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#fcf8f2" />
+  <link rel="preload" href="fonts/open-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/yellowtail-latin.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
-<header class="topbar">
-  <div class="topbar-inner">
-    <div class="topbar-title">
-      <img class="mark" src="mark.svg" alt="" />
-      <h1>SkillSpector</h1>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-title">
+        <img class="mark" src="mark.svg" alt="" />
+        <h1>SkillSpector</h1>
+      </div>
+      <div id="health" class="health">checking installation…</div>
     </div>
-    <div id="health" class="health">checking installation…</div>
+  </header>
+
+  <div class="app" id="app">
+
+    <aside class="scan-sidebar">
+      <h2 class="scan-sidebar-title">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+          <circle cx="12" cy="12" r="4.25" stroke="currentColor" stroke-width="1.6" />
+          <path d="M12 12 19.4 6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <circle cx="12" cy="12" r="1.35" fill="currentColor" />
+        </svg>
+        Scan a Skill
+      </h2>
+      <div class="scan-field">
+        <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip"
+          placeholder="Git URL, path, or .zip" />
+        <span id="source-type" class="source-type" hidden></span>
+      </div>
+
+      <div class="scan-or" aria-hidden="true">or</div>
+
+      <label class="drop-zone" id="drop-zone">
+        <input type="file" id="file-input" accept=".zip,application/zip,application/x-zip-compressed"
+          aria-label="Upload a .zip skill archive to scan" />
+        <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 15V4M12 4 8 8M12 4l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M4 14v3.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V14" stroke="currentColor" stroke-width="1.6"
+            stroke-linecap="round" />
+        </svg>
+        <span class="drop-zone-text">Drop a <code>.zip</code> here<br /><span class="drop-zone-sub">or click to
+            browse</span></span>
+      </label>
+
+      <div class="file-chip" id="file-chip" role="status" hidden>
+        <span class="file-chip-name" id="file-chip-name"></span>
+        <button type="button" class="file-chip-clear" id="file-clear" aria-label="Remove selected file">&times;</button>
+      </div>
+
+      <label class="llm-toggle">
+        <input type="checkbox" id="use-llm" />
+        LLM Review
+      </label>
+      <button id="scan-btn" class="btn btn-primary">Scan</button>
+      <div id="scan-status" class="scan-status" role="status" hidden></div>
+      <p class="rail-credit"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</p>
+    </aside>
+
+    <main>
+
+      <section id="list-view">
+        <div class="list-head">
+          <h2 class="list-title">Scanned Skills</h2>
+          <div class="segmented" role="tablist" aria-label="Log view">
+            <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Scanned
+              Skill</button>
+            <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
+          </div>
+        </div>
+        <div id="log-summary" class="log-summary" hidden></div>
+        <div class="skill-table-wrap">
+          <table class="skill-table">
+            <thead>
+              <tr>
+                <th class="col-name" scope="col">Skill</th>
+                <th class="col-score" scope="col">Score</th>
+                <th class="col-verdict" scope="col">Verdict</th>
+                <th class="col-date" scope="col">Last scanned</th>
+                <th class="col-status" scope="col">Gate</th>
+              </tr>
+            </thead>
+            <tbody id="skill-rows">
+            </tbody>
+          </table>
+        </div>
+        <p id="empty-state" class="empty-state" hidden>
+          No skills scanned yet. Paste a source on the left and run a scan.
+        </p>
+      </section>
+
+      <section id="detail-view" hidden>
+        <div class="detail-actions">
+          <button id="back-btn" class="btn-text">← Back to log</button>
+          <span class="detail-actions-right">
+            <button id="restore-btn" class="btn-text" hidden>Restore to log</button>
+            <button id="archive-btn" class="btn-text">Archive</button>
+            <button id="delete-btn" class="btn-text btn-text-danger" hidden>Delete permanently</button>
+          </span>
+        </div>
+
+        <div class="detail-head">
+          <div>
+            <h2 id="detail-name"></h2>
+            <div id="detail-source" class="detail-source"></div>
+          </div>
+          <div class="detail-score-block">
+            <div id="detail-score" class="detail-score">—</div>
+            <div id="detail-verdict" class="detail-verdict-label"></div>
+            <div id="score-meter" class="score-meter" hidden aria-hidden="true">
+              <span class="score-meter-track"></span>
+              <span class="score-meter-marker"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="gate-bar">
+          <span id="gate-current" class="gate-current"></span>
+          <div class="gate-actions">
+            <button class="btn gate-btn" id="gate-reset" hidden>Reset</button>
+            <button class="btn gate-btn" data-status="approved">Install</button>
+            <button class="btn gate-btn" data-status="rejected">Do Not Install</button>
+          </div>
+        </div>
+
+        <div id="detail-error" class="detail-error" hidden></div>
+
+        <div id="findings-wrap">
+          <figure id="severity-breakdown" class="severity-breakdown" hidden></figure>
+          <div id="findings-list" class="findings-list"></div>
+        </div>
+      </section>
+
+    </main>
+
   </div>
-</header>
 
-<div class="app" id="app">
+  <footer class="page-footer"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</footer>
 
-  <aside class="scan-sidebar">
-    <h2 class="scan-sidebar-title">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
-        <circle cx="12" cy="12" r="4.25" stroke="currentColor" stroke-width="1.6" />
-        <path d="M12 12 19.4 6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-        <circle cx="12" cy="12" r="1.35" fill="currentColor" />
-      </svg>
-      Scan a Skill
-    </h2>
-    <div class="scan-field">
-      <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, path, or .zip" />
-      <span id="source-type" class="source-type" hidden></span>
-    </div>
-
-    <div class="scan-or" aria-hidden="true">or</div>
-
-    <label class="drop-zone" id="drop-zone">
-      <input type="file" id="file-input" accept=".zip,application/zip,application/x-zip-compressed" aria-label="Upload a .zip skill archive to scan" />
-      <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 15V4M12 4 8 8M12 4l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-        <path d="M4 14v3.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-      </svg>
-      <span class="drop-zone-text">Drop a <code>.zip</code> here<br /><span class="drop-zone-sub">or click to browse</span></span>
-    </label>
-
-    <div class="file-chip" id="file-chip" role="status" hidden>
-      <span class="file-chip-name" id="file-chip-name"></span>
-      <button type="button" class="file-chip-clear" id="file-clear" aria-label="Remove selected file">&times;</button>
-    </div>
-
-    <label class="llm-toggle">
-      <input type="checkbox" id="use-llm" />
-      LLM Review
-    </label>
-    <button id="scan-btn" class="btn btn-primary">Scan</button>
-    <div id="scan-status" class="scan-status" role="status" hidden></div>
-    <p class="rail-credit"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</p>
-  </aside>
-
-  <main>
-
-    <section id="list-view">
-      <div class="list-head">
-        <h2 class="list-title">Scan Skill Log</h2>
-        <div class="segmented" role="tablist" aria-label="Log view">
-          <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Scanned Skill</button>
-          <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
-        </div>
-      </div>
-      <div id="log-summary" class="log-summary" hidden></div>
-      <div class="skill-table-wrap">
-        <table class="skill-table">
-          <thead>
-            <tr>
-              <th class="col-name" scope="col">Skill</th>
-              <th class="col-score" scope="col">Score</th>
-              <th class="col-verdict" scope="col">Verdict</th>
-              <th class="col-date" scope="col">Last scanned</th>
-              <th class="col-status" scope="col">Gate</th>
-            </tr>
-          </thead>
-          <tbody id="skill-rows">
-          </tbody>
-        </table>
-      </div>
-      <p id="empty-state" class="empty-state" hidden>
-        No skills scanned yet. Paste a source on the left and run a scan.
-      </p>
-    </section>
-
-    <section id="detail-view" hidden>
-    <div class="detail-actions">
-      <button id="back-btn" class="btn-text">← Back to log</button>
-      <span class="detail-actions-right">
-        <button id="restore-btn" class="btn-text" hidden>Restore to log</button>
-        <button id="archive-btn" class="btn-text">Archive</button>
-        <button id="delete-btn" class="btn-text btn-text-danger" hidden>Delete permanently</button>
-      </span>
-    </div>
-
-    <div class="detail-head">
-      <div>
-        <h2 id="detail-name"></h2>
-        <div id="detail-source" class="detail-source"></div>
-      </div>
-      <div class="detail-score-block">
-        <div id="detail-score" class="detail-score">—</div>
-        <div id="detail-verdict" class="detail-verdict-label"></div>
-        <div id="score-meter" class="score-meter" hidden aria-hidden="true">
-          <span class="score-meter-track"></span>
-          <span class="score-meter-marker"></span>
-        </div>
-      </div>
-    </div>
-
-    <div class="gate-bar">
-      <span id="gate-current" class="gate-current"></span>
-      <div class="gate-actions">
-        <button class="btn gate-btn" data-status="approved">Install</button>
-        <button class="btn gate-btn" data-status="rejected">Do Not Install</button>
-      </div>
-    </div>
-
-    <div id="detail-error" class="detail-error" hidden></div>
-
-    <div id="findings-wrap">
-      <figure id="severity-breakdown" class="severity-breakdown" hidden></figure>
-      <div id="findings-list" class="findings-list"></div>
-    </div>
-    </section>
-
-  </main>
-
-</div>
-
-<footer class="page-footer"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</footer>
-
-<script src="app.js"></script>
+  <script src="app.js"></script>
 </body>
+
 </html>

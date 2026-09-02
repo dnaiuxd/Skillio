@@ -786,6 +786,20 @@ main {
   max-width: 640px;
 }
 
+.detail-source a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.detail-source a:hover { color: var(--ink); }
+
+.detail-source a:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 .detail-score-block {
   width: 188px;
   flex-shrink: 0;
