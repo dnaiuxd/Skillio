@@ -122,8 +122,9 @@ function stageFile(file) {
     return;
   }
   stagedFile = file;
-  els.fileChipName.textContent = file.name;
+  // reveal the role="status" chip before naming the file, so it announces
   els.fileChip.hidden = false;
+  els.fileChipName.textContent = file.name;
   els.dropZone.hidden = true;
   els.scanOr.hidden = true;
   els.scanInput.value = "";
@@ -142,9 +143,11 @@ function clearStagedFile() {
 }
 
 function showScanStatus(msg, isError = false) {
-  els.scanStatus.textContent = msg;
   els.scanStatus.classList.toggle("error", isError);
+  // Reveal before writing: a role="status" region mutated while it is
+  // display:none is usually never announced.
   els.scanStatus.hidden = false;
+  els.scanStatus.textContent = msg;
 }
 
 function hideScanStatus() {
@@ -439,9 +442,21 @@ function renderDetail(skill) {
 
   renderGateCurrent(skill.status);
 
+  // SkillSpector silently degrades to static-only when the LLM pass was asked
+  // for but no provider is configured — say so rather than passing it off as
+  // a full scan.
+  const meta = (skill.report && skill.report.metadata) || {};
+  const llmSkipped = !!meta.llm_requested && !meta.llm_available;
+  els.detailError.classList.toggle("detail-error--warn", !skill.error && llmSkipped);
   if (skill.error) {
     els.detailError.hidden = false;
     els.detailError.textContent = skill.error;
+  } else if (llmSkipped) {
+    els.detailError.hidden = false;
+    els.detailError.textContent =
+      "LLM review was requested but no provider was configured, so this is a " +
+      "static-only scan. Set SKILLSPECTOR_PROVIDER and the matching API key, " +
+      "then scan again.";
   } else {
     els.detailError.hidden = true;
   }
@@ -657,11 +672,13 @@ async function deleteSkill() {
     return;
   }
 
-  const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
-  if (!res.ok) {
+  try {
+    const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (e) {
     els.detailError.hidden = false;
     els.detailError.textContent =
-      "Could not delete this record — it may have already been removed. Go back and refresh the log.";
+      "Could not delete this record — it may have already been removed, or the backend is down. Go back and refresh the log.";
     return;
   }
 

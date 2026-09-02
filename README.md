@@ -27,9 +27,10 @@ skillspector --version
 The GUI shows "skillspector ready" in the top-right when it can find it,
 "skillspector not found on PATH" otherwise.
 
-If you want the optional LLM semantic pass (the "LLM review" checkbox in
-the GUI), set a provider — otherwise leave it off and the GUI runs static
-analysis only:
+If you want the optional LLM semantic pass (the "LLM Review" checkbox in
+the GUI), set a provider. Without one, SkillSpector does not error — it
+quietly skips the semantic analyzers and returns a static-only report, so
+the GUI shows a warning on the detail page when that happens.
 
 ```bash
 export SKILLSPECTOR_PROVIDER=anthropic
@@ -57,9 +58,16 @@ restarted if it crashes, surviving reboots — install the bundled
 launchd agent:
 
 ```bash
+mkdir -p ~/Library/LaunchAgents
 cp macos/com.skillspector.gui.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.plist
 ```
+
+A launchd agent does **not** inherit your shell environment, so the LLM
+variables exported above are invisible to it. To use LLM Review under the
+background service, add them to the plist's `EnvironmentVariables` dict
+(alongside `PATH`) and `launchctl kickstart -k gui/$(id -u)/com.skillspector.gui`.
+Note that puts the API key in a plaintext file in your home directory.
 
 The paths inside the plist are absolute — edit them if the repo doesn't
 live at `~/Projects/skills-spector`, or if you rebuild `backend/.venv`.

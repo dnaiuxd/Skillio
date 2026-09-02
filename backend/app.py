@@ -91,13 +91,21 @@ def _run_scan(source: str, use_llm: bool) -> dict:
     if not binary:
         raise RuntimeError(
             "skillspector was not found on PATH. Install it first: "
-            "git clone https://github.com/NVIDIA/SkillSpector.git, then "
-            "`uv venv && source .venv/bin/activate && make install`."
+            "`uv tool install git+https://github.com/NVIDIA/skillspector.git` "
+            "(see https://github.com/NVIDIA/skillspector)."
         )
 
-    cmd = [binary, "scan", source, "--format", "json"]
+    # The CLI parses a leading-dash positional as an option, so a source like
+    # "-o /somewhere" would be read as a flag rather than a thing to scan.
+    if source.startswith("-"):
+        raise RuntimeError(
+            "Source must not start with '-'. Prefix a relative path with './'."
+        )
+
+    cmd = [binary, "scan", "--format", "json"]
     if not use_llm:
         cmd.append("--no-llm")
+    cmd += ["--", source]
 
     try:
         proc = subprocess.run(

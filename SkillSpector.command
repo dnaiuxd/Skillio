@@ -15,7 +15,7 @@ PORT=8787
 URL="http://localhost:$PORT"
 
 # Already running? Just open it.
-if curl -s -o /dev/null --max-time 2 "$URL/api/health"; then
+if curl -fs -o /dev/null --max-time 2 "$URL/api/health"; then
   echo "SkillSpector GUI is already running — opening $URL"
   open "$URL"
   exit 0
@@ -33,7 +33,7 @@ fi
 # Open the browser once the server answers.
 (
   for _ in $(seq 1 40); do
-    if curl -s -o /dev/null "$URL/api/health"; then
+    if curl -fs -o /dev/null "$URL/api/health"; then
       open "$URL"
       break
     fi

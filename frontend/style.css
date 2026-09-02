@@ -268,7 +268,6 @@ main {
   color: var(--ink-soft);
 }
 
-.source-type[hidden] { display: none; }
 
 .source-type::before {
   content: "";
@@ -281,6 +280,18 @@ main {
 .source-type--git::before { background: var(--ok); }
 .source-type--path::before { background: var(--medium); }
 .source-type--zip::before { background: var(--pending); }
+
+/* the placeholder is the field's only visible label — don't leave it to the
+   UA default grey, which lands near 2:1 on --surface */
+#scan-input::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+#scan-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 #scan-input:focus {
   outline: none;
@@ -309,7 +320,6 @@ main {
   color: var(--ink-soft);
 }
 
-.scan-or[hidden] { display: none; }
 
 .drop-zone {
   display: flex;
@@ -324,11 +334,21 @@ main {
   cursor: pointer;
 }
 
-.drop-zone[hidden] { display: none; }
 
 .drop-zone:hover {
   border-color: var(--ink);
   color: var(--ink);
+}
+
+/* the label stays clickable-looking while its input is disabled mid-scan */
+.drop-zone:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.drop-zone:has(input:disabled):hover {
+  border-color: var(--line-strong);
+  color: var(--ink-soft);
 }
 
 .drop-zone:focus-within {
@@ -386,7 +406,6 @@ main {
   background: var(--surface);
 }
 
-.file-chip[hidden] { display: none; }
 
 .file-chip-name {
   flex: 1;
@@ -412,9 +431,14 @@ main {
   line-height: 1;
 }
 
-.file-chip-clear:hover {
+.file-chip-clear:not(:disabled):hover {
   background: var(--line);
   color: var(--ink);
+}
+
+.file-chip-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .file-chip-clear:focus-visible {
@@ -435,7 +459,6 @@ main {
   color: var(--ink-soft);
 }
 
-.scan-status[hidden] { display: none; }
 
 .scan-status::before {
   content: "";
@@ -588,7 +611,6 @@ main {
   margin: 0 0 22px;
 }
 
-.log-summary[hidden] { display: none; }
 
 .stat {
   flex: 0 0 auto;
@@ -718,7 +740,6 @@ main {
 .pill-critical { background: var(--critical); }
 .pill-medium { background: var(--medium); }
 .pill-ok { background: var(--ok); }
-.pill-pending { background: var(--pending); }
 
 /* Softer, de-emphasised badge for medium/low findings — tinted fill with
    dark text, still >= 4.5:1 (raw opacity would fail the green one).
@@ -771,11 +792,18 @@ main {
   margin-bottom: 20px;
 }
 
+/* let the name/source column shrink — a flex item defaults to min-width:auto,
+   which would push a long unbroken skill name past the score block */
+.detail-head > div:first-child {
+  min-width: 0;
+}
+
 #detail-name {
   font-family: var(--font-heading);
   font-size: 26px;
   font-weight: 700;
   margin: 0 0 4px;
+  overflow-wrap: anywhere;
 }
 
 .detail-source {
@@ -844,7 +872,6 @@ main {
   margin: 14px 0 0;
 }
 
-.score-meter[hidden] { display: none; }
 
 .score-meter-track {
   position: absolute;
@@ -948,6 +975,12 @@ main {
   white-space: pre-wrap;
 }
 
+/* a caveat about the scan, not a failure of it */
+.detail-error--warn {
+  border-color: var(--medium);
+  color: var(--medium);
+}
+
 /* ---------- Findings by severity (bar chart) ---------- */
 
 .severity-breakdown {
@@ -958,7 +991,6 @@ main {
   border-radius: 20px;
 }
 
-.severity-breakdown[hidden] { display: none; }
 
 .severity-breakdown-head {
   display: flex;
@@ -1013,9 +1045,11 @@ main {
 
 .sev-row--empty .sev-bar { display: none; }
 
-.sev-row--empty .sev-label,
+/* "0 critical" is real data, not decoration — keep it on a readable token.
+   The hidden bar + lighter weight carry the de-emphasis instead of colour. */
 .sev-row--empty .sev-count {
-  color: var(--line-strong);
+  color: var(--ink-soft);
+  font-weight: 400;
 }
 
 .finding {
