@@ -281,6 +281,14 @@ function severityRank(sev) {
   return i === -1 ? SEVERITY_ORDER.length : i;
 }
 
+// critical/high stay solid red; medium/low/info get a softer tinted badge
+function findingPillClass(severity) {
+  const sev = (severity || "").toLowerCase();
+  if (sev === "critical" || sev === "high") return "pill-critical";
+  if (sev === "medium") return "pill-medium pill--soft";
+  return "pill-ok pill--soft";
+}
+
 function countBySeverity(findings) {
   const counts = Object.fromEntries(SEVERITY_ORDER.map((s) => [s, 0]));
   for (const f of findings) {
@@ -344,7 +352,7 @@ function renderFindings(report) {
       <div class="finding-top">
         <span class="finding-rule">${escapeHtml(f.rule_id || f.category || "finding")}</span>
         <span class="finding-location">${escapeHtml(loc)}</span>
-        <span class="pill pill-${(f.severity || "pending").toLowerCase() === "critical" || (f.severity || "").toLowerCase() === "high" ? "critical" : (f.severity || "").toLowerCase() === "medium" ? "medium" : "ok"}">${escapeHtml(f.severity || "")}</span>
+        <span class="pill ${findingPillClass(f.severity)}">${escapeHtml(f.severity || "")}</span>
       </div>
       <div class="finding-message">${escapeHtml(f.message || f.explanation || f.finding || "")}</div>
       ${f.remediation ? `<div class="finding-remediation">Fix: ${escapeHtml(f.remediation)}</div>` : ""}

@@ -401,6 +401,18 @@ main {
 .pill-ok { background: var(--ok); }
 .pill-pending { background: var(--pending); }
 
+/* Softer, de-emphasised badge for medium/low findings — tinted fill with
+   dark text, still >= 4.5:1 (raw opacity would fail the green one). */
+.pill-medium.pill--soft {
+  color: var(--medium);
+  background: color-mix(in srgb, var(--medium) 12%, var(--surface));
+}
+
+.pill-ok.pill--soft {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, var(--surface));
+}
+
 /* Verdict cell — quiet text unless it's the high-risk "do not install"
    case, which keeps the solid red .pill treatment. */
 .verdict-text {
