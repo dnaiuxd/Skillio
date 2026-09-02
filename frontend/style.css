@@ -25,15 +25,17 @@
 }
 
 :root {
-  /* Cream + black, taken from the logo (#F5ECE3 / #000). */
-  --bg: #f5ece3;
+  /* White page, cream surfaces, black ink. */
+  --bg: #ffffff;
   --surface: #fcf8f2;
+  --rail-bg: #f8f2ed;
+  --rail-border: #ebe4de;
   --ink: #000000;
   --ink-soft: #5c554b;
   --line: #e4d8c4;
   --line-strong: #c6b393;
 
-  /* Semantic status colours — kept for scan results, all >=4.5:1 on --bg. */
+  /* Semantic status colours — kept for scan results, all >=4.5:1 on white. */
   --critical: #b23a2e;
   --medium: #7b5a0e;
   --ok: #3d6b4f;
@@ -146,8 +148,8 @@ main {
   align-items: stretch;
   gap: 14px;
   padding: 28px 22px 32px;
-  background: var(--surface);
-  border-right: 1px solid var(--line);
+  background: var(--rail-bg);
+  border-right: 1px solid var(--rail-border);
 }
 
 .scan-sidebar-title {
@@ -806,7 +808,7 @@ main {
     align-items: flex-start;
     padding: 22px 28px;
     border-right: none;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--rail-border);
   }
   .scan-sidebar > * {
     width: 100%;
