@@ -560,17 +560,6 @@ main {
   white-space: pre-wrap;
 }
 
-.findings-heading {
-  font-family: var(--font-heading);
-  font-size: 15px;
-  text-transform: none;
-  color: var(--ink-soft);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 10px;
-  margin-bottom: 4px;
-  font-weight: 600;
-}
-
 /* ---------- Findings by severity (bar chart) ---------- */
 
 .severity-breakdown {
@@ -587,9 +576,15 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  font-size: 13px;
+  font-size: 16px;
+  text-transform: capitalize;
   color: var(--ink-soft);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.severity-breakdown-head span:first-child {
+  font-weight: 600;
+  color: var(--ink);
 }
 
 .sev-row {
