@@ -28,7 +28,7 @@
   /* White page, cream surfaces, black ink. */
   --bg: #ffffff;
   --surface: #fcf8f2;
-  --rail-bg: #f8f2ed;
+  --rail-bg: #fffdf9;
   --rail-border: #ebe4de;
   --ink: #000000;
   --ink-soft: #5c554b;
@@ -117,7 +117,7 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 358px minmax(0, 1fr);
+  grid-template-columns: 415px minmax(0, 1fr);
   align-items: start;
 }
 
@@ -154,17 +154,19 @@ main {
 
 .scan-sidebar-title {
   font-family: var(--font-heading);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 700;
-  margin: 0 0 2px;
+  margin: 0 0 4px;
   color: var(--ink);
 }
 
 .list-title {
   font-family: var(--font-heading);
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0 0 18px;
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 20px;
   color: var(--ink);
 }
 
@@ -176,11 +178,11 @@ main {
 
 #scan-input {
   width: 100%;
-  padding: 12px 18px;
+  padding: 13px 20px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 15px;
   background: var(--surface);
   color: var(--ink);
 }
@@ -267,8 +269,8 @@ main {
 .llm-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 9px;
+  font-size: 15px;
   color: var(--ink-soft);
   white-space: nowrap;
 }
@@ -798,7 +800,7 @@ main {
 }
 
 /* Tablet & below — the scan rail becomes a band on top of the log */
-@media (max-width: 960px) {
+@media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
   }
