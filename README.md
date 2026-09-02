@@ -109,7 +109,7 @@ start. Open **http://localhost:8787**.
   deleted — only the report is kept.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
   verdict, and gate status at a glance; the score is color-coded
-  (green ≤ 20, amber 21–50, red > 50). The **Current log / Archived**
+  (green ≤ 20, amber 21–50, red > 50). The **Scanned Skill / Archived**
   toggle switches which set you're looking at.
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
