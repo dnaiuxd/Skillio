@@ -19,7 +19,7 @@
 @font-face {
   font-family: "Montserrat";
   src: url("fonts/montserrat-latin.woff2") format("woff2");
-  font-weight: 400 700;
+  font-weight: 100 900;
   font-style: normal;
   font-display: swap;
 }
@@ -28,7 +28,8 @@
   /* White page, cream surfaces, black ink. */
   --bg: #ffffff;
   --surface: #fcf8f2;
-  --rail-bg: #f8f2ed;
+  --topbar-bg: #f5ece3;
+  --rail-bg: #fcf8f2;
   --rail-border: #ebe4de;
   --ink: #000000;
   --ink-soft: #5c554b;
@@ -71,7 +72,7 @@ button {
 
 .topbar {
   border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--topbar-bg);
 }
 
 .topbar-inner {
@@ -147,7 +148,7 @@ main {
   flex-direction: column;
   align-items: stretch;
   gap: 14px;
-  padding: 28px 22px 32px;
+  padding: 28px 22px 18px;
   background: var(--rail-bg);
   border-right: 1px solid var(--rail-border);
 }
@@ -174,21 +175,23 @@ main {
   margin-top: auto;
   padding-top: 28px;
   text-align: center;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--ink-soft);
 }
 
 .rail-credit .heart {
   color: var(--critical);
+  font-size: 1.15em;
+  vertical-align: -0.05em;
 }
 
 .list-title {
   font-family: var(--font-heading);
-  font-size: 24px;
-  font-weight: 400;
-  letter-spacing: 0.06em;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  margin: 0 0 20px;
+  margin: 0 0 22px;
   color: var(--ink);
 }
 
@@ -299,6 +302,7 @@ main {
 
 .scan-sidebar #scan-btn {
   width: 100%;
+  margin-top: 10px;
 }
 
 .btn {
