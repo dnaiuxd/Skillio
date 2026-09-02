@@ -219,13 +219,22 @@ main {
   border-top: 1px solid var(--line);
 }
 
+.list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 24px;
+}
+
 .list-title {
   font-family: var(--font-heading);
   font-size: 38px;
   font-weight: 300;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin: 0 0 24px;
+  margin: 0;
   color: var(--ink);
 }
 
@@ -537,7 +546,6 @@ main {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  margin: 0 0 22px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 999px;
