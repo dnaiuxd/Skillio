@@ -2,6 +2,7 @@ const API = "/api";
 
 const els = {
   health: document.getElementById("health"),
+  scanBar: document.querySelector(".scan-bar"),
   scanInput: document.getElementById("scan-input"),
   scanBtn: document.getElementById("scan-btn"),
   scanStatus: document.getElementById("scan-status"),
@@ -207,13 +208,18 @@ async function runScan() {
   }
 }
 
+function showDetailView(show) {
+  els.detailView.hidden = !show;
+  els.listView.hidden = show;
+  els.scanBar.hidden = show; // hide the scan bar while viewing a skill
+}
+
 async function openDetail(id) {
   currentSkillId = id;
   const res = await fetch(`${API}/skills/${id}`);
   const skill = await res.json();
   renderDetail(skill);
-  els.listView.hidden = true;
-  els.detailView.hidden = false;
+  showDetailView(true);
 }
 
 function renderDetail(skill) {
@@ -360,8 +366,7 @@ async function deleteSkill() {
   }
 
   currentSkillId = null;
-  els.detailView.hidden = true;
-  els.listView.hidden = false;
+  showDetailView(false);
   loadSkills();
 }
 
@@ -371,8 +376,7 @@ els.scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") runScan();
 });
 els.backBtn.addEventListener("click", () => {
-  els.detailView.hidden = true;
-  els.listView.hidden = false;
+  showDetailView(false);
   loadSkills();
 });
 els.deleteBtn.addEventListener("click", deleteSkill);

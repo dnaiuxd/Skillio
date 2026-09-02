@@ -127,6 +127,8 @@ main {
   margin-bottom: 28px;
 }
 
+.scan-bar[hidden] { display: none; }
+
 #scan-input {
   flex: 1;
   padding: 12px 20px;
