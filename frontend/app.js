@@ -30,6 +30,7 @@ const els = {
 const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 
 let currentSkillId = null;
+let scanning = false;
 
 function severityClass(score) {
   if (score == null) return "pending";
@@ -224,7 +225,8 @@ function humanize(str) {
 
 async function runScan() {
   const source = els.scanInput.value.trim();
-  if (!source) return;
+  if (!source || scanning) return;
+  scanning = true;
 
   const useLlm = els.useLlm.checked;
   const controls = [els.scanInput, els.useLlm, els.scanBtn];
@@ -252,6 +254,7 @@ async function runScan() {
   } catch (e) {
     showScanStatus(`Scan request failed: ${e.message}`, true);
   } finally {
+    scanning = false;
     controls.forEach((el) => (el.disabled = false));
     els.scanBtn.textContent = "Scan";
   }
@@ -407,14 +410,21 @@ function renderFindings(report) {
 
 async function setGateStatus(status) {
   if (currentSkillId == null) return;
-  const res = await fetch(`${API}/skills/${currentSkillId}/status`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
-  });
-  const skill = await res.json();
-  renderGateCurrent(skill.status);
-  loadSkills();
+  try {
+    const res = await fetch(`${API}/skills/${currentSkillId}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const skill = await res.json();
+    renderGateCurrent(skill.status);
+    loadSkills();
+  } catch (e) {
+    // Record is gone or the backend is down — bail back to a fresh log.
+    showDetailView(false);
+    loadSkills();
+  }
 }
 
 async function deleteSkill() {

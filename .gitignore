@@ -25,5 +25,8 @@ venv/
 .idea/
 *.swp
 
+# Claude Code — personal, machine-specific settings
+.claude/settings.local.json
+
 # Node (frontend tooling, if added later)
 node_modules/

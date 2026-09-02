@@ -40,9 +40,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SkillSpector GUI", lifespan=lifespan)
 
+# The frontend is served from this same app (same origin), so CORS isn't
+# needed for normal use. Scope it to localhost only — a wildcard would let
+# any site you visit POST /api/scan (which shells out) or read your log.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8787",
+        "http://127.0.0.1:8787",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
