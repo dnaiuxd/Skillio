@@ -80,6 +80,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 6px 24px;
 }
 
@@ -106,6 +107,8 @@ button {
 }
 
 .health {
+  margin-left: auto;
+  text-align: right;
   font-size: 13px;
   color: var(--ink-soft);
   font-family: var(--mono);
@@ -173,16 +176,18 @@ main {
 
 .rail-credit,
 .page-footer {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
   font-size: 14px;
   color: var(--ink-soft);
 }
 
 .rail-credit .heart,
 .page-footer .heart {
-  font-size: 1.5em;
-  line-height: 0;
-  vertical-align: -0.16em;
+  font-size: 1.6em;
+  line-height: 1;
 }
 
 .rail-credit {
@@ -856,12 +861,13 @@ main {
     max-width: 460px;
   }
   .rail-credit { display: none; }
-  .page-footer { display: block; }
+  .page-footer { display: flex; }
 }
 
 @media (max-width: 700px) {
   main { padding: 20px; }
   .topbar-inner { padding: 16px 20px; gap: 4px 16px; }
+  .health { margin-left: 0; text-align: left; }
   .scan-sidebar { padding: 20px; }
   .list-title { font-size: 28px; }
   /* drop "Verdict" and "Last scanned" — Score + Gate carry the triage signal */
