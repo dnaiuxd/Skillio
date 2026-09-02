@@ -115,7 +115,7 @@ button {
 
 .app {
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: 358px minmax(0, 1fr);
   align-items: start;
 }
 
@@ -796,7 +796,7 @@ main {
 }
 
 /* Tablet & below — the scan rail becomes a band on top of the log */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .app {
     grid-template-columns: 1fr;
   }
