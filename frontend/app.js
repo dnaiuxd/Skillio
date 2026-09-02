@@ -9,6 +9,7 @@ const els = {
   listView: document.getElementById("list-view"),
   detailView: document.getElementById("detail-view"),
   skillRows: document.getElementById("skill-rows"),
+  logSummary: document.getElementById("log-summary"),
   emptyState: document.getElementById("empty-state"),
   backBtn: document.getElementById("back-btn"),
   deleteBtn: document.getElementById("delete-btn"),
@@ -16,6 +17,8 @@ const els = {
   detailSource: document.getElementById("detail-source"),
   detailScore: document.getElementById("detail-score"),
   detailVerdict: document.getElementById("detail-verdict"),
+  scoreMeter: document.getElementById("score-meter"),
+  scoreMeterMarker: document.querySelector("#score-meter .score-meter-marker"),
   detailError: document.getElementById("detail-error"),
   findingsList: document.getElementById("findings-list"),
   severityBreakdown: document.getElementById("severity-breakdown"),
@@ -87,9 +90,32 @@ async function loadSkills() {
   renderSkillList(skills);
 }
 
+function renderLogSummary(skills) {
+  const el = els.logSummary;
+  if (!skills.length) {
+    el.hidden = true;
+    return;
+  }
+  const count = (status) => skills.filter((k) => k.status === status).length;
+  const tiles = [
+    ["scanned", skills.length],
+    ["approved", count("approved")],
+    ["rejected", count("rejected")],
+    ["pending", count("pending")],
+  ];
+  el.innerHTML = tiles
+    .map(
+      ([label, n]) =>
+        `<div class="stat"><span class="stat-num">${n}</span><span class="stat-label">${label}</span></div>`
+    )
+    .join("");
+  el.hidden = false;
+}
+
 function renderSkillList(skills) {
   els.skillRows.innerHTML = "";
   els.emptyState.hidden = skills.length > 0;
+  renderLogSummary(skills);
 
   for (const s of skills) {
     const tr = document.createElement("tr");
@@ -109,7 +135,7 @@ function renderSkillList(skills) {
         <span class="score-badge score-badge--${sevClass}">${s.score ?? "—"}</span>
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
-      <td><span class="pill pill-${sevClass}">${escapeHtml(s.verdict || (s.error ? "error" : "—"))}</span></td>
+      <td><span class="pill pill-${sevClass}">${escapeHtml(humanize(s.verdict) || (s.error ? "error" : "—"))}</span></td>
       <td><span class="pill pill-${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
       <td>${fmtDate(s.last_scanned)}</td>
     `;
@@ -140,6 +166,11 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+// "do_not_install" -> "do not install" (CSS then capitalizes it)
+function humanize(str) {
+  return (str || "").replace(/[_-]+/g, " ").trim();
 }
 
 async function runScan() {
@@ -193,10 +224,17 @@ function renderDetail(skill) {
   els.detailScore.textContent = skill.score ?? "—";
   els.detailScore.className = `detail-score detail-score--${sevClass}`;
 
+  if (typeof skill.score === "number") {
+    els.scoreMeterMarker.style.left = `${Math.max(0, Math.min(100, skill.score))}%`;
+    els.scoreMeter.hidden = false;
+  } else {
+    els.scoreMeter.hidden = true;
+  }
+
   const sevWord = severityWord(skill.score);
   const verdictParts = [];
   if (sevWord) verdictParts.push(`${sevWord} risk`);
-  if (skill.verdict) verdictParts.push(skill.verdict);
+  if (skill.verdict) verdictParts.push(humanize(skill.verdict));
   else if (skill.error) verdictParts.push("scan failed");
   else if (!sevWord) verdictParts.push("no verdict");
   els.detailVerdict.textContent = verdictParts.join(" · ");

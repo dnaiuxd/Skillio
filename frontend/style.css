@@ -88,8 +88,8 @@ button {
 }
 
 .topbar-title .mark {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   display: block;
   flex-shrink: 0;
 }
@@ -257,6 +257,37 @@ main {
 
 /* ---------- Table ---------- */
 
+/* ---------- Log summary (list view) ---------- */
+
+.log-summary {
+  display: flex;
+  gap: 36px;
+  padding: 2px 10px 18px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.log-summary[hidden] { display: none; }
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stat-num {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
 .skill-table-wrap {
   overflow-x: auto;
 }
@@ -277,10 +308,13 @@ main {
 }
 
 .skill-table .col-score,
-.skill-table .col-verdict,
-.skill-table .col-status,
 .skill-table .col-date {
   width: 110px;
+}
+
+.skill-table .col-verdict,
+.skill-table .col-status {
+  width: 128px;
 }
 
 .skill-row {
@@ -345,13 +379,16 @@ main {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  border: 1px solid currentColor;
+  white-space: nowrap;
+  text-transform: capitalize;
+  color: var(--surface);
+  background: var(--pending);
 }
 
-.pill-critical { color: var(--critical); }
-.pill-medium { color: var(--medium); }
-.pill-ok { color: var(--ok); }
-.pill-pending { color: var(--pending); }
+.pill-critical { background: var(--critical); }
+.pill-medium { background: var(--medium); }
+.pill-ok { background: var(--ok); }
+.pill-pending { background: var(--pending); }
 
 .empty-state {
   color: var(--ink-soft);
@@ -407,6 +444,39 @@ main {
   font-size: 12px;
   color: var(--ink-soft);
   margin-top: 4px;
+}
+
+/* 0–100 score meter with threshold zones (≤20 ok · 21–50 medium · >50 critical) */
+.score-meter {
+  position: relative;
+  width: 168px;
+  height: 6px;
+  margin: 12px 0 0 auto;
+}
+
+.score-meter[hidden] { display: none; }
+
+.score-meter-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--ok) 32%, var(--surface)) 0 20%,
+    color-mix(in srgb, var(--medium) 32%, var(--surface)) 20% 50%,
+    color-mix(in srgb, var(--critical) 32%, var(--surface)) 50% 100%
+  );
+}
+
+.score-meter-marker {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 3px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ink);
+  transform: translateX(-50%);
 }
 
 .gate-bar {
