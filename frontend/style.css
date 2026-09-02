@@ -28,8 +28,8 @@
   /* White page, cream surfaces, black ink. */
   --bg: #ffffff;
   --surface: #fcf8f2;
-  --topbar-bg: #f5ece3;
-  --rail-bg: #fcf8f2;
+  --topbar-bg: #fcf8f2;
+  --rail-bg: #fffdfa;
   --rail-border: #ebe4de;
   --ink: #000000;
   --ink-soft: #5c554b;
@@ -148,7 +148,7 @@ main {
   flex-direction: column;
   align-items: stretch;
   gap: 14px;
-  padding: 28px 22px 18px;
+  padding: 28px 22px 16px;
   background: var(--rail-bg);
   border-right: 1px solid var(--rail-border);
 }
@@ -172,7 +172,7 @@ main {
 }
 
 .rail-credit {
-  margin-top: auto;
+  margin: auto 0 0;
   padding-top: 28px;
   text-align: center;
   font-size: 14px;
@@ -180,18 +180,18 @@ main {
 }
 
 .rail-credit .heart {
-  color: var(--critical);
-  font-size: 1.15em;
-  vertical-align: -0.05em;
+  font-size: 1.6em;
+  line-height: 0;
+  vertical-align: -0.18em;
 }
 
 .list-title {
   font-family: var(--font-heading);
-  font-size: 30px;
+  font-size: 38px;
   font-weight: 300;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin: 0 0 22px;
+  margin: 0 0 24px;
   color: var(--ink);
 }
 
@@ -848,6 +848,7 @@ main {
   main { padding: 20px; }
   .topbar-inner { padding: 16px 20px; gap: 4px 16px; }
   .scan-sidebar { padding: 20px; }
+  .list-title { font-size: 28px; }
   /* drop "Verdict" and "Last scanned" — Score + Gate carry the triage signal */
   .skill-table thead th:nth-child(3),
   .skill-row td:nth-child(3),
