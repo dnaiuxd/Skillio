@@ -257,8 +257,6 @@ main {
   margin-bottom: 20px;
 }
 
-/* ---------- Table ---------- */
-
 /* ---------- Log summary (list view) ---------- */
 
 .log-summary {
@@ -402,14 +400,17 @@ main {
 .pill-pending { background: var(--pending); }
 
 /* Softer, de-emphasised badge for medium/low findings — tinted fill with
-   dark text, still >= 4.5:1 (raw opacity would fail the green one). */
+   dark text, still >= 4.5:1 (raw opacity would fail the green one).
+   The plain --surface line is a fallback for browsers without color-mix. */
 .pill-medium.pill--soft {
   color: var(--medium);
+  background: var(--surface);
   background: color-mix(in srgb, var(--medium) 12%, var(--surface));
 }
 
 .pill-ok.pill--soft {
   color: var(--ok);
+  background: var(--surface);
   background: color-mix(in srgb, var(--ok) 12%, var(--surface));
 }
 
@@ -460,7 +461,7 @@ main {
   font-family: var(--mono);
   font-size: 13px;
   color: var(--ink-soft);
-  word-break: break-all;
+  overflow-wrap: anywhere;
   max-width: 640px;
 }
 
@@ -605,7 +606,7 @@ main {
   border: 1px solid var(--critical);
   color: var(--critical);
   padding: 14px;
-  border-radius: 2px;
+  border-radius: 8px;
   font-family: var(--mono);
   font-size: 13px;
   margin-bottom: 24px;

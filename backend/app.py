@@ -114,17 +114,17 @@ def _run_scan(source: str, use_llm: bool) -> dict:
     return report
 
 
+def _first_present(report: dict, *keys):
+    """First key whose value is not None — so a real 0 isn't skipped."""
+    for key in keys:
+        if report.get(key) is not None:
+            return report[key]
+    return None
+
+
 def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[str]]:
-    score = (
-        report.get("risk_score")
-        or report.get("score")
-        or report.get("overall_score")
-    )
-    verdict = (
-        report.get("verdict")
-        or report.get("recommendation")
-        or report.get("result")
-    )
+    score = _first_present(report, "risk_score", "score", "overall_score")
+    verdict = _first_present(report, "verdict", "recommendation", "result")
     if verdict is None and isinstance(score, (int, float)):
         verdict = "do_not_install" if score > 50 else "ok"
     return score, verdict

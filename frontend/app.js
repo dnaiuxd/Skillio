@@ -86,9 +86,12 @@ async function checkHealth() {
 }
 
 async function loadSkills() {
-  const res = await fetch(`${API}/skills`);
-  const skills = await res.json();
-  renderSkillList(skills);
+  try {
+    const res = await fetch(`${API}/skills`);
+    renderSkillList(await res.json());
+  } catch (e) {
+    // Backend unreachable — checkHealth() already surfaces this in the topbar.
+  }
 }
 
 function renderLogSummary(skills) {
@@ -229,9 +232,17 @@ function showDetailView(show) {
 }
 
 async function openDetail(id) {
+  let skill;
+  try {
+    const res = await fetch(`${API}/skills/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    skill = await res.json();
+  } catch (e) {
+    // Row is gone (deleted elsewhere) or the backend is down — just refresh.
+    await loadSkills();
+    return;
+  }
   currentSkillId = id;
-  const res = await fetch(`${API}/skills/${id}`);
-  const skill = await res.json();
   renderDetail(skill);
   showDetailView(true);
 }
