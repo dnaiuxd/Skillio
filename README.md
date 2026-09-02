@@ -46,10 +46,42 @@ that it just starts the server and opens the app in your browser. Close
 the Terminal window it opens to stop the server. Double-clicking it
 again while it's already running simply reopens the tab.
 
-To get an app-style icon instead of a browser tab: open
-`http://localhost:8787` in Chrome and choose **⋮ → Cast, save & share →
-Install page as app**, or in Safari 17+ **File → Add to Dock**. That
-window still needs the server running (via the launcher above).
+### Run it — always (background service, macOS)
+
+To have `http://localhost:8787` up permanently — started at login,
+restarted if it crashes, surviving reboots — install the bundled
+launchd agent:
+
+```bash
+cp macos/com.skillspector.gui.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.plist
+```
+
+The paths inside the plist are absolute — edit them if the repo doesn't
+live at `~/Projects/skills-spector`, or if you rebuild `backend/.venv`.
+Run `backend` setup once first (the "manually" steps below, through
+`pip install`) so the venv exists. Logs go to
+`~/Library/Logs/skillspector-gui.log`.
+
+To stop and remove it:
+
+```bash
+launchctl bootout gui/$(id -u)/com.skillspector.gui
+rm ~/Library/LaunchAgents/com.skillspector.gui.plist
+```
+
+### Install it as an app
+
+With the server running, open `http://localhost:8787` and add it to your
+Dock as a standalone window:
+
+- **Chrome** — ⋮ → *Cast, save, and share* → **Install page as app…**
+  (the manifest makes this option appear; an install icon also shows in
+  the address bar)
+- **Safari 17+** — File → **Add to Dock**
+
+The Dock icon only opens the window — it still needs the server up, so
+pair it with the background service above.
 
 ### Run it — manually
 

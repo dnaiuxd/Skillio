@@ -12,6 +12,7 @@ Requires `skillspector` to be installed and on PATH (see the SkillSpector
 README: git clone + `uv venv` + `make install`).
 """
 import json
+import mimetypes
 import shutil
 import subprocess
 from contextlib import asynccontextmanager
@@ -25,6 +26,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import storage
+
+# StaticFiles infers Content-Type from this map; .webmanifest isn't registered
+# by default on macOS, so Chrome would fetch the manifest as text/plain.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 @asynccontextmanager
