@@ -524,16 +524,16 @@ main {
 .gate-bar {
   display: flex;
   flex-wrap: wrap;
+  justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 12px 16px;
   margin-bottom: 24px;
 }
 
-.gate-label {
-  font-size: 13px;
-  text-transform: capitalize;
-  color: var(--ink-soft);
-  margin-right: 4px;
+.gate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .gate-btn {
@@ -542,12 +542,50 @@ main {
   font-size: 13px;
 }
 
-.gate-current {
-  margin-left: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: capitalize;
+.gate-btn[data-status="approved"] {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--surface);
 }
+
+.gate-btn[data-status="rejected"] {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: var(--surface);
+}
+
+.gate-btn[data-status="approved"]:not(:disabled):hover {
+  background: var(--ok);
+  filter: brightness(0.9);
+}
+
+.gate-btn[data-status="rejected"]:not(:disabled):hover {
+  background: var(--critical);
+  filter: brightness(0.9);
+}
+
+.gate-current {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.gate-current-label {
+  font-size: 12px;
+  text-transform: capitalize;
+  color: var(--ink-soft);
+}
+
+.gate-current-value {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--ink);
+}
+
+.gate-current-value--ok { color: var(--ok); }
+.gate-current-value--critical { color: var(--critical); }
+.gate-current-value--pending { color: var(--ink-soft); }
 
 .detail-error {
   border: 1px solid var(--critical);

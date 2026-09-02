@@ -170,6 +170,12 @@ function gateClass(status) {
   return "pending";
 }
 
+function renderGateCurrent(status) {
+  els.gateCurrent.innerHTML =
+    `<span class="gate-current-label">currently:</span>` +
+    `<span class="gate-current-value gate-current-value--${gateClass(status)}">${escapeHtml(status)}</span>`;
+}
+
 function escapeHtml(str) {
   if (str == null) return "";
   const div = document.createElement("div");
@@ -258,7 +264,7 @@ function renderDetail(skill) {
     sevClass === "critical"
   );
 
-  els.gateCurrent.textContent = `currently: ${skill.status}`;
+  renderGateCurrent(skill.status);
 
   if (skill.error) {
     els.detailError.hidden = false;
@@ -355,7 +361,7 @@ async function setGateStatus(status) {
     body: JSON.stringify({ status }),
   });
   const skill = await res.json();
-  els.gateCurrent.textContent = `currently: ${skill.status}`;
+  renderGateCurrent(skill.status);
   loadSkills();
 }
 

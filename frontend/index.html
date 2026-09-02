@@ -82,11 +82,12 @@
     </div>
 
     <div class="gate-bar">
-      <span class="gate-label">Install gate:</span>
-      <button class="btn gate-btn" data-status="approved">Approve</button>
-      <button class="btn gate-btn" data-status="rejected">Reject</button>
-      <button class="btn gate-btn" data-status="pending">Reset</button>
       <span id="gate-current" class="gate-current"></span>
+      <div class="gate-actions">
+        <button class="btn gate-btn" data-status="approved">Approve</button>
+        <button class="btn gate-btn" data-status="rejected">Reject</button>
+        <button class="btn gate-btn" data-status="pending">Reset</button>
+      </div>
     </div>
 
     <div id="detail-error" class="detail-error" hidden></div>
