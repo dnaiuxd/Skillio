@@ -28,7 +28,13 @@
 <div class="app" id="app">
 
   <aside class="scan-sidebar">
-    <h2 class="scan-sidebar-title">Scan a Skill</h2>
+    <h2 class="scan-sidebar-title">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="2" />
+        <path d="M20 20l-4.7-4.7" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+      </svg>
+      Scan a Skill
+    </h2>
     <div class="scan-field">
       <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, path, or .zip" />
       <span id="source-type" class="source-type" hidden></span>
@@ -39,6 +45,7 @@
     </label>
     <button id="scan-btn" class="btn btn-primary">Scan</button>
     <div id="scan-status" class="scan-status" role="status" hidden></div>
+    <p class="rail-credit"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</p>
   </aside>
 
   <main>

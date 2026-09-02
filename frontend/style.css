@@ -28,7 +28,7 @@
   /* White page, cream surfaces, black ink. */
   --bg: #ffffff;
   --surface: #fcf8f2;
-  --rail-bg: #fffdf9;
+  --rail-bg: #f8f2ed;
   --rail-border: #ebe4de;
   --ink: #000000;
   --ink-soft: #5c554b;
@@ -153,11 +153,33 @@ main {
 }
 
 .scan-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-heading);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 500;
   margin: 0 0 4px;
   color: var(--ink);
+}
+
+.scan-sidebar-title svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--ink-soft);
+}
+
+.rail-credit {
+  margin-top: auto;
+  padding-top: 28px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.rail-credit .heart {
+  color: var(--critical);
 }
 
 .list-title {
