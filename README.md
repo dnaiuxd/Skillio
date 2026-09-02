@@ -10,18 +10,22 @@ reading terminal output every time.
 
 ## 1. Install SkillSpector itself (one-time)
 
+SkillSpector is a separate tool — this GUI only drives it. Install it
+with [uv](https://docs.astral.sh/uv/) so the `skillspector` command lands
+on your PATH:
+
 ```bash
-git clone https://github.com/NVIDIA/SkillSpector.git
-cd SkillSpector
-uv venv && source .venv/bin/activate
-make install
+uv tool install git+https://github.com/NVIDIA/skillspector.git
 ```
 
-Confirm it's on your PATH:
+Confirm it's there:
 
 ```bash
 skillspector --version
 ```
+
+The GUI shows "skillspector ready" in the top-right when it can find it,
+"skillspector not found on PATH" otherwise.
 
 If you want the optional LLM semantic pass (the "LLM review" checkbox in
 the GUI), set a provider — otherwise leave it off and the GUI runs static
