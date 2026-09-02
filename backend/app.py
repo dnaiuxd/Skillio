@@ -69,6 +69,10 @@ class StatusRequest(BaseModel):
     status: str  # "pending" | "approved" | "rejected"
 
 
+class ArchiveRequest(BaseModel):
+    archived: bool = True
+
+
 def _skillspector_path() -> Optional[str]:
     return shutil.which("skillspector")
 
@@ -178,8 +182,8 @@ def health() -> dict:
 
 
 @app.get("/api/skills")
-def list_skills() -> list:
-    return storage.list_skills()
+def list_skills(archived: bool = False) -> list:
+    return storage.list_skills(archived)
 
 
 @app.get("/api/skills/{skill_id}")
@@ -263,6 +267,14 @@ def set_status(skill_id: int, req: StatusRequest) -> dict:
     if req.status not in ("pending", "approved", "rejected"):
         raise HTTPException(status_code=400, detail="invalid status")
     skill = storage.set_status(skill_id, req.status)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return skill
+
+
+@app.post("/api/skills/{skill_id}/archive")
+def archive_skill(skill_id: int, req: ArchiveRequest) -> dict:
+    skill = storage.set_archived(skill_id, req.archived)
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     return skill

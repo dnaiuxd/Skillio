@@ -109,14 +109,19 @@ start. Open **http://localhost:8787**.
   deleted — only the report is kept.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
   verdict, and gate status at a glance; the score is color-coded
-  (green ≤ 20, amber 21–50, red > 50).
+  (green ≤ 20, amber 21–50, red > 50). The **Current log / Archived**
+  toggle switches which set you're looking at.
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
   found, or the source is unreachable).
-- **Gate** — Approve / Reject / Reset. This is local state for your own
+- **Gate** — Install / Do Not Install. This is local state for your own
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own
   install scripts if you want it to be enforced.
+- **Archive** — moves a scan out of the current log without losing it;
+  find it under the Archived tab and **Restore** it any time. Re-scanning
+  an archived source brings it back automatically. **Delete permanently**
+  (archived items only) is the one irreversible action.
 
 ## Notes
 

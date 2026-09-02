@@ -16,10 +16,14 @@ const els = {
   useLlm: document.getElementById("use-llm"),
   listView: document.getElementById("list-view"),
   detailView: document.getElementById("detail-view"),
+  tabCurrent: document.getElementById("tab-current"),
+  tabArchived: document.getElementById("tab-archived"),
   skillRows: document.getElementById("skill-rows"),
   logSummary: document.getElementById("log-summary"),
   emptyState: document.getElementById("empty-state"),
   backBtn: document.getElementById("back-btn"),
+  archiveBtn: document.getElementById("archive-btn"),
+  restoreBtn: document.getElementById("restore-btn"),
   deleteBtn: document.getElementById("delete-btn"),
   detailName: document.getElementById("detail-name"),
   detailSource: document.getElementById("detail-source"),
@@ -38,6 +42,7 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 let currentSkillId = null;
 let scanning = false;
 let stagedFile = null;
+let showingArchived = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 function severityClass(score) {
@@ -171,11 +176,18 @@ async function checkHealth() {
 
 async function loadSkills() {
   try {
-    const res = await fetch(`${API}/skills`);
+    const res = await fetch(`${API}/skills?archived=${showingArchived}`);
     renderSkillList(await res.json());
   } catch (e) {
     // Backend unreachable — checkHealth() already surfaces this in the topbar.
   }
+}
+
+function setTab(archived) {
+  showingArchived = archived;
+  els.tabCurrent.setAttribute("aria-selected", String(!archived));
+  els.tabArchived.setAttribute("aria-selected", String(archived));
+  loadSkills();
 }
 
 function renderLogSummary(skills) {
@@ -202,6 +214,9 @@ function renderLogSummary(skills) {
 
 function renderSkillList(skills) {
   els.skillRows.innerHTML = "";
+  els.emptyState.textContent = showingArchived
+    ? "Nothing archived yet. Archive a scan from its detail page to move it here."
+    : "No skills scanned yet. Paste a source on the left and run a scan.";
   els.emptyState.hidden = skills.length > 0;
   renderLogSummary(skills);
 
@@ -321,7 +336,8 @@ async function runScan() {
     }
     const skill = await res.json();
     hideScanStatus();
-    await loadSkills();
+    // A new or re-run scan always lands in the current log.
+    setTab(false);
     if (skill && skill.id != null) {
       openDetail(skill.id);
     }
@@ -364,6 +380,11 @@ async function openDetail(id) {
 function renderDetail(skill) {
   els.detailName.textContent = skill.name;
   els.detailSource.textContent = skill.source;
+
+  // Active items can be archived; archived items can be restored or purged.
+  els.archiveBtn.hidden = skill.archived;
+  els.restoreBtn.hidden = !skill.archived;
+  els.deleteBtn.hidden = !skill.archived;
 
   const sevClass = severityClass(skill.score);
   els.detailScore.textContent = skill.score ?? "—";
@@ -555,12 +576,29 @@ async function setGateStatus(status) {
   }
 }
 
+async function setArchived(archived) {
+  if (currentSkillId == null) return;
+  try {
+    const res = await fetch(`${API}/skills/${currentSkillId}/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch (e) {
+    // Record is gone or backend is down — fall through and refresh the list.
+  }
+  currentSkillId = null;
+  showDetailView(false);
+  loadSkills();
+}
+
 async function deleteSkill() {
   if (currentSkillId == null) return;
   const name = els.detailName.textContent || "this skill";
   if (
     !confirm(
-      `Delete "${name}" from the log? This removes the scan record and its findings.`
+      `Delete "${name}" for good? This removes the scan record and its findings — it can't be undone.`
     )
   ) {
     return;
@@ -589,9 +627,25 @@ els.backBtn.addEventListener("click", () => {
   showDetailView(false);
   loadSkills();
 });
+els.archiveBtn.addEventListener("click", () => setArchived(true));
+els.restoreBtn.addEventListener("click", () => setArchived(false));
 els.deleteBtn.addEventListener("click", deleteSkill);
 document.querySelectorAll(".gate-btn").forEach((btn) => {
   btn.addEventListener("click", () => setGateStatus(btn.dataset.status));
+});
+
+// --- log / archived tabs ---
+els.tabCurrent.addEventListener("click", () => setTab(false));
+els.tabArchived.addEventListener("click", () => setTab(true));
+[els.tabCurrent, els.tabArchived].forEach((tab, i, tabs) => {
+  tab.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const other = tabs[i === 0 ? 1 : 0];
+      other.focus();
+      other.click();
+    }
+  });
 });
 
 // --- drop zone ---

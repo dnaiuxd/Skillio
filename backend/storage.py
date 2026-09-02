@@ -21,6 +21,7 @@ _SCHEMA = """
         score INTEGER,
         verdict TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
+        archived INTEGER NOT NULL DEFAULT 0,
         report_json TEXT,
         error TEXT
     )
@@ -34,6 +35,12 @@ def get_conn() -> sqlite3.Connection:
     # Ensure the schema on every connection so deleting the .db file to
     # reset the log doesn't 500 a long-running server until it restarts.
     conn.execute(_SCHEMA)
+    # Migrate DBs created before the archived column existed.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(skills)")}
+    if "archived" not in cols:
+        conn.execute(
+            "ALTER TABLE skills ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
+        )
     return conn
 
 
@@ -51,6 +58,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     else:
         d["report"] = None
     d.pop("report_json", None)
+    d["archived"] = bool(d.get("archived"))
     return d
 
 
@@ -80,7 +88,7 @@ def upsert_scan(
             """
             UPDATE skills
             SET name = ?, last_scanned = ?, score = ?, verdict = ?,
-                report_json = ?, error = ?
+                report_json = ?, error = ?, archived = 0
             WHERE id = ?
             """,
             (name, now, score, verdict, report_json, error, existing["id"]),
@@ -102,9 +110,12 @@ def upsert_scan(
     return _row_to_dict(row)
 
 
-def list_skills() -> list[dict[str, Any]]:
+def list_skills(archived: bool = False) -> list[dict[str, Any]]:
     conn = get_conn()
-    rows = conn.execute("SELECT * FROM skills ORDER BY last_scanned DESC").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM skills WHERE archived = ? ORDER BY last_scanned DESC",
+        (1 if archived else 0,),
+    ).fetchall()
     conn.close()
     return [_row_to_dict(r) for r in rows]
 
@@ -119,6 +130,18 @@ def get_skill(skill_id: int) -> Optional[dict[str, Any]]:
 def set_status(skill_id: int, status: str) -> Optional[dict[str, Any]]:
     conn = get_conn()
     conn.execute("UPDATE skills SET status = ? WHERE id = ?", (status, skill_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+    conn.close()
+    return _row_to_dict(row) if row else None
+
+
+def set_archived(skill_id: int, archived: bool) -> Optional[dict[str, Any]]:
+    conn = get_conn()
+    conn.execute(
+        "UPDATE skills SET archived = ? WHERE id = ?",
+        (1 if archived else 0, skill_id),
+    )
     conn.commit()
     row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
     conn.close()
