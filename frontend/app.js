@@ -105,10 +105,12 @@ async function checkHealth() {
     const res = await fetch(`${API}/health`);
     const data = await res.json();
     if (data.skillspector_installed) {
-      els.health.textContent = `skillspector ready — ${data.version || "installed"}`;
+      els.health.textContent = `NVIDIA skillspector ready — ${data.version || "installed"}`;
       els.health.className = "health ok";
     } else {
-      els.health.textContent = "skillspector not found on PATH — install it first";
+      els.health.innerHTML =
+        "NVIDIA skillspector not found on PATH — " +
+        '<a href="https://github.com/NVIDIA/skillspector" target="_blank" rel="noopener noreferrer">install it first ↗</a>';
       els.health.className = "health bad";
     }
   } catch (e) {

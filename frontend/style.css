@@ -117,6 +117,20 @@ button {
 .health.ok { color: var(--ok); }
 .health.bad { color: var(--critical); }
 
+.health a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.health a:hover { text-decoration-thickness: 2px; }
+
+.health a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* ---------- App shell: scan rail + content ---------- */
 
 .app {
