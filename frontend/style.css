@@ -271,12 +271,13 @@ main {
 .log-summary[hidden] { display: none; }
 
 .stat {
-  flex: 1 1 120px;
+  flex: 0 0 auto;
+  min-width: 104px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  padding: 14px 12px;
+  padding: 12px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -285,7 +286,7 @@ main {
 
 .stat-num {
   font-family: var(--font-heading);
-  font-size: 23px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   color: var(--ink);
@@ -293,6 +294,7 @@ main {
 
 .stat-label {
   font-size: 12px;
+  text-transform: capitalize;
   color: var(--ink-soft);
 }
 
