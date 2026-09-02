@@ -45,7 +45,6 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 let currentSkillId = null;
 let scanning = false;
 let stagedFile = null;
-let gateEditing = false;
 let showingArchived = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
@@ -281,15 +280,12 @@ function renderGateCurrent(status) {
     `<span class="gate-current-value gate-current-value--${gateClass(status)}">${escapeHtml(status)}</span>`;
 }
 
-// Active items: Install / Do Not Install, always. Archived items: a lone
-// Reset until you click it — then the decision buttons appear and the
-// permanent-delete escape hatch is hidden while you're re-deciding.
+// Active items show Install / Do Not Install. Archived items show a lone
+// Reset — which restores the item and hands it back the decision buttons.
 function updateGateControls(archived) {
-  const locked = archived && !gateEditing;
-  els.gateReset.hidden = !locked;
-  els.gateApprove.hidden = locked;
-  els.gateReject.hidden = locked;
-  els.deleteBtn.hidden = !archived || gateEditing;
+  els.gateReset.hidden = !archived;
+  els.gateApprove.hidden = archived;
+  els.gateReject.hidden = archived;
 }
 
 function renderDetailSource(src) {
@@ -414,7 +410,7 @@ function renderDetail(skill) {
   // Active items can be archived; archived items can be restored or purged.
   els.archiveBtn.hidden = skill.archived;
   els.restoreBtn.hidden = !skill.archived;
-  gateEditing = false;
+  els.deleteBtn.hidden = !skill.archived;
   updateGateControls(skill.archived);
 
   const sevClass = severityClass(skill.score);
@@ -607,11 +603,30 @@ async function setGateStatus(status) {
   }
 }
 
-// Archived item: reveal the decision buttons and clear the gate back to pending.
-function onGateReset() {
-  gateEditing = true;
-  updateGateControls(true);
-  setGateStatus("pending");
+// Reset on an archived item: restore it to the log, clear the gate to
+// pending, and re-render this page as an active item (decision buttons back).
+async function onGateReset() {
+  if (currentSkillId == null) return;
+  try {
+    for (const [path, body] of [
+      [`/skills/${currentSkillId}/archive`, { archived: false }],
+      [`/skills/${currentSkillId}/status`, { status: "pending" }],
+    ]) {
+      const res = await fetch(`${API}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    }
+    const res = await fetch(`${API}/skills/${currentSkillId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderDetail(await res.json());
+    setTab(false);
+  } catch (e) {
+    showDetailView(false);
+    loadSkills();
+  }
 }
 
 async function setArchived(archived) {
