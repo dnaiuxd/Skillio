@@ -16,11 +16,12 @@ import mimetypes
 import os
 import shutil
 import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -211,6 +212,50 @@ def scan(req: ScanRequest) -> dict:
         source=source, name=name, score=score, verdict=verdict,
         report=report, error=None,
     )
+
+
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
+
+@app.post("/api/scan/upload")
+async def scan_upload(
+    file: UploadFile = File(...),
+    use_llm: bool = Form(False),
+) -> dict:
+    """Scan an uploaded .zip: stream it to a temp file, scan, then delete it."""
+    filename = os.path.basename(file.filename or "").strip() or "upload.zip"
+    if not filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip archives can be uploaded")
+
+    tmpdir = tempfile.mkdtemp(prefix="skillspector_gui_")
+    tmppath = os.path.join(tmpdir, filename)
+    try:
+        written = 0
+        with open(tmppath, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                written += len(chunk)
+                if written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413, detail="Upload exceeds the 100 MB limit"
+                    )
+                out.write(chunk)
+
+        name = _derive_name(filename)
+        try:
+            report = _run_scan(tmppath, use_llm)
+        except RuntimeError as exc:
+            return storage.upsert_scan(
+                source=filename, name=name, score=None, verdict=None,
+                report=None, error=str(exc),
+            )
+
+        score, verdict = _extract_score_and_verdict(report)
+        return storage.upsert_scan(
+            source=filename, name=name, score=score, verdict=verdict,
+            report=report, error=None,
+        )
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @app.post("/api/skills/{skill_id}/status")

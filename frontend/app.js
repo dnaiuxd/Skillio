@@ -5,6 +5,12 @@ const els = {
   app: document.getElementById("app"),
   scanInput: document.getElementById("scan-input"),
   sourceType: document.getElementById("source-type"),
+  scanOr: document.querySelector(".scan-or"),
+  dropZone: document.getElementById("drop-zone"),
+  fileInput: document.getElementById("file-input"),
+  fileChip: document.getElementById("file-chip"),
+  fileChipName: document.getElementById("file-chip-name"),
+  fileClear: document.getElementById("file-clear"),
   scanBtn: document.getElementById("scan-btn"),
   scanStatus: document.getElementById("scan-status"),
   useLlm: document.getElementById("use-llm"),
@@ -31,6 +37,8 @@ const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 
 let currentSkillId = null;
 let scanning = false;
+let stagedFile = null;
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 function severityClass(score) {
   if (score == null) return "pending";
@@ -90,6 +98,39 @@ function updateSourceType() {
   els.sourceType.textContent = t.label;
   els.sourceType.className = `source-type source-type--${t.key}`;
   els.sourceType.hidden = false;
+}
+
+// --- file upload staging: you scan either a typed source OR a dropped .zip ---
+function stageFile(file) {
+  if (!file) return;
+  if (!/\.zip$/i.test(file.name)) {
+    els.fileInput.value = "";
+    showScanStatus("Only .zip archives can be uploaded.", true);
+    return;
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    els.fileInput.value = "";
+    showScanStatus("That file is over the 100 MB limit.", true);
+    return;
+  }
+  stagedFile = file;
+  els.fileChipName.textContent = file.name;
+  els.fileChip.hidden = false;
+  els.dropZone.hidden = true;
+  els.scanOr.hidden = true;
+  els.scanInput.value = "";
+  els.scanInput.disabled = true;
+  updateSourceType();
+  hideScanStatus();
+}
+
+function clearStagedFile() {
+  stagedFile = null;
+  els.fileInput.value = "";
+  els.fileChip.hidden = true;
+  els.dropZone.hidden = false;
+  els.scanOr.hidden = false;
+  els.scanInput.disabled = false;
 }
 
 function showScanStatus(msg, isError = false) {
@@ -234,31 +275,57 @@ function humanize(str) {
 }
 
 async function runScan() {
+  if (scanning) return;
   const source = els.scanInput.value.trim();
-  if (!source || scanning) return;
+  if (!stagedFile && !source) return;
   scanning = true;
 
   const useLlm = els.useLlm.checked;
-  const controls = [els.scanInput, els.useLlm, els.scanBtn];
+  const controls = [
+    els.scanInput,
+    els.useLlm,
+    els.scanBtn,
+    els.fileInput,
+    els.fileClear,
+  ];
   controls.forEach((el) => (el.disabled = true));
   els.scanBtn.textContent = "Scanning…";
+  const label = deriveName(stagedFile ? stagedFile.name : source);
   showScanStatus(
-    `Scanning ${deriveName(source)}` +
+    `Scanning ${label}` +
       (useLlm ? " with LLM review — this can take a few minutes" : "…")
   );
 
   try {
-    const res = await fetch(`${API}/scan`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, use_llm: useLlm }),
-    });
+    let res;
+    if (stagedFile) {
+      const form = new FormData();
+      form.append("file", stagedFile);
+      form.append("use_llm", String(useLlm));
+      res = await fetch(`${API}/scan/upload`, { method: "POST", body: form });
+    } else {
+      res = await fetch(`${API}/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, use_llm: useLlm }),
+      });
+    }
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch (_) {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
     const skill = await res.json();
     hideScanStatus();
     await loadSkills();
     if (skill && skill.id != null) {
       openDetail(skill.id);
     }
+    clearStagedFile();
     els.scanInput.value = "";
     updateSourceType();
   } catch (e) {
@@ -266,6 +333,7 @@ async function runScan() {
   } finally {
     scanning = false;
     controls.forEach((el) => (el.disabled = false));
+    els.scanInput.disabled = stagedFile != null;
     els.scanBtn.textContent = "Scan";
   }
 }
@@ -524,6 +592,34 @@ els.backBtn.addEventListener("click", () => {
 els.deleteBtn.addEventListener("click", deleteSkill);
 document.querySelectorAll(".gate-btn").forEach((btn) => {
   btn.addEventListener("click", () => setGateStatus(btn.dataset.status));
+});
+
+// --- drop zone ---
+els.fileInput.addEventListener("change", () => stageFile(els.fileInput.files[0]));
+els.fileClear.addEventListener("click", clearStagedFile);
+
+["dragenter", "dragover"].forEach((evt) =>
+  els.dropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    if (!scanning) els.dropZone.classList.add("drop-zone--over");
+  })
+);
+els.dropZone.addEventListener("dragleave", (e) => {
+  if (!els.dropZone.contains(e.relatedTarget)) {
+    els.dropZone.classList.remove("drop-zone--over");
+  }
+});
+els.dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  els.dropZone.classList.remove("drop-zone--over");
+  if (scanning) return;
+  stageFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+});
+
+// A file dropped anywhere else would make the browser navigate to it.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  if (!els.dropZone.contains(e.target)) e.preventDefault();
 });
 
 checkHealth();

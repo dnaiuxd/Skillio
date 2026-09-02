@@ -21,14 +21,14 @@ if curl -s -o /dev/null --max-time 2 "$URL/api/health"; then
   exit 0
 fi
 
-# First run: create the venv and install dependencies.
-if [ ! -x .venv/bin/uvicorn ]; then
+# First run: create the venv. Then always sync deps with requirements.txt
+# (a no-op in a second when nothing changed).
+if [ ! -x .venv/bin/python3 ]; then
   echo "First run — setting up the Python environment (this takes a minute)…"
   python3 -m venv .venv
   .venv/bin/pip install --quiet --upgrade pip
-  .venv/bin/pip install --quiet -r requirements.txt
-  echo "Done."
 fi
+.venv/bin/pip install --quiet -r requirements.txt
 
 # Open the browser once the server answers.
 (

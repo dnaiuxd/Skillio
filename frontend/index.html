@@ -41,6 +41,23 @@
       <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, path, or .zip" />
       <span id="source-type" class="source-type" hidden></span>
     </div>
+
+    <div class="scan-or" aria-hidden="true">or</div>
+
+    <label class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".zip,application/zip,application/x-zip-compressed" aria-label="Upload a .zip skill archive to scan" />
+      <svg class="drop-zone-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 15V4M12 4 8 8M12 4l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M4 14v3.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <span class="drop-zone-text">Drop a <code>.zip</code> here<br /><span class="drop-zone-sub">or click to browse</span></span>
+    </label>
+
+    <div class="file-chip" id="file-chip" role="status" hidden>
+      <span class="file-chip-name" id="file-chip-name"></span>
+      <button type="button" class="file-chip-clear" id="file-clear" aria-label="Remove selected file">&times;</button>
+    </div>
+
     <label class="llm-toggle">
       <input type="checkbox" id="use-llm" />
       LLM Review

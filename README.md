@@ -101,9 +101,12 @@ start. Open **http://localhost:8787**.
 
 ## Using it
 
-- **Scan bar** — paste a git URL, a local path, or a `.zip`, then hit
-  Scan. Re-scanning the same source updates its existing row rather than
-  duplicating it, so you get a fresh score after a skill's code changes.
+- **Scan bar** — paste a git URL, a local path, or a `.zip` (`~` is
+  expanded), or drop a `.zip` onto the upload area / click it to browse.
+  Then hit Scan. Re-scanning the same source updates its existing row
+  rather than duplicating it, so you get a fresh score after a skill's
+  code changes. Uploads are streamed to a temp file, scanned, and
+  deleted — only the report is kept.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
   verdict, and gate status at a glance; the score is color-coded
   (green ≤ 20, amber 21–50, red > 50).
