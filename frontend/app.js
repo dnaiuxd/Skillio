@@ -46,6 +46,15 @@ function severityWord(score) {
   return "low";
 }
 
+// The solid red treatment is reserved for the high-risk "do not install"
+// call — either SkillSpector recommended it, or our score band is critical.
+function isHighRisk(score, verdict) {
+  return (
+    severityClass(score) === "critical" ||
+    /do[ _-]?not[ _-]?install/i.test(verdict || "")
+  );
+}
+
 function deriveName(source) {
   let s = source.replace(/\/+$/, "");
   if (s.endsWith(".git")) s = s.slice(0, -4);
@@ -163,12 +172,11 @@ function renderSkillList(skills) {
     const sevWord = severityWord(s.score);
 
     const verdictText = humanize(s.verdict) || (s.error ? "error" : "—");
-    // Only a "do not install" (high-risk) verdict gets the solid red badge;
+    // Only the high-risk "do not install" call gets the solid red badge;
     // everything else is quiet text.
-    const verdictCell =
-      sevClass === "critical"
-        ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
-        : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
+    const verdictCell = isHighRisk(s.score, s.verdict)
+      ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
+      : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
 
     tr.innerHTML = `
       <td>
@@ -220,9 +228,9 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// "do_not_install" -> "do not install" (CSS then capitalizes it)
+// "DO_NOT_INSTALL" -> "do not install" (CSS then capitalizes it)
 function humanize(str) {
-  return (str || "").replace(/[_-]+/g, " ").trim();
+  return (str || "").replace(/[_-]+/g, " ").trim().toLowerCase();
 }
 
 async function runScan() {
@@ -310,7 +318,7 @@ function renderDetail(skill) {
   // Red badge only for the high-risk "do not install" case; otherwise quiet text.
   els.detailVerdict.classList.toggle(
     "detail-verdict-label--danger",
-    sevClass === "critical"
+    isHighRisk(skill.score, skill.verdict)
   );
 
   renderGateCurrent(skill.status);
@@ -378,13 +386,64 @@ function renderSeverityBreakdown(findings) {
   el.hidden = false;
 }
 
+// SkillSpector reports one "issue" per code location; collapse repeats of the
+// same finding into one row that lists every line it hit.
+function dedupeFindings(list) {
+  const seen = new Map();
+  for (const f of list) {
+    const key =
+      f.finding_id || f.id || `${f.category || ""}|${f.pattern || f.message || ""}`;
+    const spot = f.location || (f.occurrences && f.occurrences[0]) || f;
+    const loc =
+      spot && spot.file
+        ? `${spot.file}${spot.start_line ? ":" + spot.start_line : ""}`
+        : "";
+    if (seen.has(key)) {
+      if (loc) seen.get(key)._locs.add(loc);
+    } else {
+      seen.set(key, { ...f, _locs: new Set(loc ? [loc] : []) });
+    }
+  }
+  return [...seen.values()];
+}
+
+function findingTitle(f) {
+  return f.category || f.rule_id || f.id || "finding";
+}
+
+function findingMessage(f) {
+  return f.pattern || f.message || f.explanation || f.finding || "";
+}
+
+// "a.py:1", "a.py:9", "b.py:4" -> "a.py:1, 9  ·  b.py:4"
+function findingLocations(f) {
+  const locs = f._locs ? [...f._locs] : [];
+  if (!locs.length) return "";
+  const byFile = new Map();
+  for (const l of locs) {
+    const cut = l.lastIndexOf(":");
+    const file = cut > 0 ? l.slice(0, cut) : l;
+    const line = cut > 0 ? l.slice(cut + 1) : "";
+    if (!byFile.has(file)) byFile.set(file, []);
+    if (line) byFile.get(file).push(line);
+  }
+  return [...byFile.entries()]
+    .map(([file, lines]) => {
+      if (!lines.length) return file;
+      const shown = lines.slice(0, 4).join(", ");
+      return `${file}:${shown}${lines.length > 4 ? ` +${lines.length - 4}` : ""}`;
+    })
+    .join("  ·  ");
+}
+
 function renderFindings(report) {
   els.findingsList.innerHTML = "";
-  const findings = report && (report.findings || report.results || []);
+  const raw = report && (report.findings || report.results || report.issues);
+  const findings = dedupeFindings(raw || []);
 
-  renderSeverityBreakdown(findings || []);
+  renderSeverityBreakdown(findings);
 
-  if (!findings || findings.length === 0) {
+  if (findings.length === 0) {
     els.findingsList.innerHTML = `<div class="no-findings">No findings in this report.</div>`;
     return;
   }
@@ -396,14 +455,13 @@ function renderFindings(report) {
   for (const f of sorted) {
     const div = document.createElement("div");
     div.className = "finding";
-    const loc = f.file ? `${f.file}${f.start_line ? ":" + f.start_line : ""}` : "";
     div.innerHTML = `
       <div class="finding-top">
-        <span class="finding-rule">${escapeHtml(f.rule_id || f.category || "finding")}</span>
-        <span class="finding-location">${escapeHtml(loc)}</span>
-        <span class="pill ${findingPillClass(f.severity)}">${escapeHtml(f.severity || "")}</span>
+        <span class="finding-rule">${escapeHtml(findingTitle(f))}</span>
+        <span class="finding-location">${escapeHtml(findingLocations(f))}</span>
+        <span class="pill ${findingPillClass(f.severity)}">${escapeHtml((f.severity || "").toLowerCase())}</span>
       </div>
-      <div class="finding-message">${escapeHtml(f.message || f.explanation || f.finding || "")}</div>
+      <div class="finding-message">${escapeHtml(findingMessage(f))}</div>
       ${f.remediation ? `<div class="finding-remediation">Fix: ${escapeHtml(f.remediation)}</div>` : ""}
     `;
     els.findingsList.appendChild(div);

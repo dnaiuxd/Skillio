@@ -129,29 +129,48 @@ def _first_present(report: dict, *keys):
 
 
 def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[str]]:
-    score = _first_present(report, "risk_score", "score", "overall_score")
-    verdict = _first_present(report, "verdict", "recommendation", "result")
+    # SkillSpector nests these under "risk_assessment" (score + recommendation);
+    # fall back to top-level keys for older or differently-shaped reports.
+    ra = report.get("risk_assessment")
+    ra = ra if isinstance(ra, dict) else {}
+
+    score = _first_present(ra, "score", "risk_score", "overall_score")
+    if score is None:
+        score = _first_present(report, "risk_score", "score", "overall_score")
+
+    verdict = _first_present(ra, "recommendation", "verdict", "result")
+    if verdict is None:
+        verdict = _first_present(report, "verdict", "recommendation", "result")
+
     if verdict is None and isinstance(score, (int, float)):
         verdict = "do_not_install" if score > 50 else "ok"
     return score, verdict
 
 
+# `skillspector --version` spins up the whole CLI (~5s); its output never
+# changes for a given binary, so look it up once per path and cache it.
+_version_cache: dict[str, Optional[str]] = {}
+
+
+def _skillspector_version(binary: str) -> Optional[str]:
+    if binary not in _version_cache:
+        try:
+            proc = subprocess.run(
+                [binary, "--version"], capture_output=True, text=True, timeout=15
+            )
+            _version_cache[binary] = proc.stdout.strip() or None
+        except Exception:
+            _version_cache[binary] = None
+    return _version_cache[binary]
+
+
 @app.get("/api/health")
 def health() -> dict:
     binary = _skillspector_path()
-    version = None
-    if binary:
-        try:
-            proc = subprocess.run(
-                [binary, "--version"], capture_output=True, text=True, timeout=10
-            )
-            version = proc.stdout.strip() or proc.stderr.strip()
-        except Exception:
-            version = "unknown"
     return {
         "skillspector_installed": binary is not None,
         "skillspector_path": binary,
-        "version": version,
+        "version": _skillspector_version(binary) if binary else None,
     }
 
 
