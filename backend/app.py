@@ -13,6 +13,7 @@ README: git clone + `uv venv` + `make install`).
 """
 import json
 import mimetypes
+import os
 import shutil
 import subprocess
 from contextlib import asynccontextmanager
@@ -73,9 +74,10 @@ def _skillspector_path() -> Optional[str]:
 
 def _derive_name(source: str) -> str:
     s = source.rstrip("/")
-    if s.endswith(".git"):
-        s = s[:-4]
-    return s.split("/")[-1] or s
+    for suffix in (".git", ".zip"):
+        if s.endswith(suffix):
+            s = s[: -len(suffix)]
+    return s.split("/")[-1].split("\\")[-1] or s
 
 
 def _run_scan(source: str, use_llm: bool) -> dict:
@@ -189,7 +191,8 @@ def get_skill(skill_id: int) -> dict:
 
 @app.post("/api/scan")
 def scan(req: ScanRequest) -> dict:
-    source = req.source.strip()
+    # expanduser so "~/Downloads/skill.zip" works; a no-op for URLs.
+    source = os.path.expanduser(req.source.strip())
     if not source:
         raise HTTPException(status_code=400, detail="source is required")
 

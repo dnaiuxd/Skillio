@@ -57,8 +57,8 @@ function isHighRisk(score, verdict) {
 
 function deriveName(source) {
   let s = source.replace(/\/+$/, "");
-  if (s.endsWith(".git")) s = s.slice(0, -4);
-  const parts = s.split("/");
+  s = s.replace(/\.(git|zip)$/i, "");
+  const parts = s.split(/[/\\]/);
   return parts[parts.length - 1] || s;
 }
 
