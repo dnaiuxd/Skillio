@@ -35,6 +35,9 @@
   --ink-soft: #5c554b;
   --line: #e4d8c4;
   --line-strong: #c6b393;
+  /* Form-control boundaries only. WCAG 1.4.11 wants 3:1 for the edge that
+     identifies a control; --line-strong is 1.93:1 and stays decorative. */
+  --line-control: #a98c5b;
 
   /* Semantic status colours — kept for scan results, all >=4.5:1 on white. */
   --critical: #b23a2e;
@@ -247,7 +250,7 @@ main {
 #scan-input {
   width: 100%;
   padding: 13px 20px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-control);
   border-radius: 999px;
   font-family: var(--mono);
   font-size: 15px;
@@ -327,7 +330,7 @@ main {
   justify-content: center;
   gap: 12px;
   padding: 12px 16px;
-  border: 1px dashed var(--line-strong);
+  border: 1px dashed var(--line-control);
   border-radius: 20px;
   background: var(--surface);
   color: var(--ink-soft);
@@ -347,7 +350,7 @@ main {
 }
 
 .drop-zone:has(input:disabled):hover {
-  border-color: var(--line-strong);
+  border-color: var(--line-control);
   color: var(--ink-soft);
 }
 
