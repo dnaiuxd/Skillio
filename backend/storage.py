@@ -11,34 +11,34 @@ from typing import Any, Optional
 
 DB_PATH = Path(__file__).parent / "skillspector_gui.db"
 
+_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS skills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source TEXT NOT NULL,
+        name TEXT NOT NULL,
+        first_scanned REAL NOT NULL,
+        last_scanned REAL NOT NULL,
+        score INTEGER,
+        verdict TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        report_json TEXT,
+        error TEXT
+    )
+"""
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Ensure the schema on every connection so deleting the .db file to
+    # reset the log doesn't 500 a long-running server until it restarts.
+    conn.execute(_SCHEMA)
     return conn
 
 
 def init_db() -> None:
-    conn = get_conn()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS skills (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT NOT NULL,
-            name TEXT NOT NULL,
-            first_scanned REAL NOT NULL,
-            last_scanned REAL NOT NULL,
-            score INTEGER,
-            verdict TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            report_json TEXT,
-            error TEXT
-        )
-        """
-    )
-    conn.commit()
-    conn.close()
+    get_conn().close()
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
