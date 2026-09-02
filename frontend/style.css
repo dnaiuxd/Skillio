@@ -171,18 +171,30 @@ main {
   color: var(--ink-soft);
 }
 
-.rail-credit {
-  margin: auto 0 0;
-  padding-top: 28px;
+.rail-credit,
+.page-footer {
   text-align: center;
   font-size: 14px;
   color: var(--ink-soft);
 }
 
-.rail-credit .heart {
+.rail-credit .heart,
+.page-footer .heart {
   font-size: 1.6em;
   line-height: 0;
   vertical-align: -0.18em;
+}
+
+.rail-credit {
+  margin: auto 0 0;
+  padding-top: 28px;
+}
+
+.page-footer {
+  display: none;
+  margin: 0;
+  padding: 22px 20px 30px;
+  border-top: 1px solid var(--line);
 }
 
 .list-title {
@@ -832,6 +844,7 @@ main {
   }
   .scan-sidebar {
     position: static;
+    align-self: start;
     min-height: 0;
     align-items: flex-start;
     padding: 22px 28px;
@@ -842,6 +855,8 @@ main {
     width: 100%;
     max-width: 460px;
   }
+  .rail-credit { display: none; }
+  .page-footer { display: block; }
 }
 
 @media (max-width: 700px) {
