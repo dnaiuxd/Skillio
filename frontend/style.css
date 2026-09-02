@@ -554,7 +554,10 @@ main {
 
 .severity-breakdown {
   margin: 16px 0 20px;
-  padding: 0;
+  padding: 16px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .severity-breakdown[hidden] { display: none; }
