@@ -448,7 +448,7 @@ main {
   width: 188px;
   flex-shrink: 0;
   margin-left: 24px;
-  text-align: left;
+  text-align: center;
 }
 
 .detail-score {
@@ -465,6 +465,7 @@ main {
 
 .detail-verdict-label {
   font-size: 13px;
+  text-transform: capitalize;
   color: var(--ink-soft);
   margin-top: 4px;
 }
