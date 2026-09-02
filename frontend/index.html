@@ -27,38 +27,43 @@
 
 <main>
 
-  <section class="scan-bar">
-    <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, local path, or .zip — e.g. https://github.com/user/some-skill" />
-    <label class="llm-toggle">
-      <input type="checkbox" id="use-llm" />
-      LLM review
-    </label>
-    <button id="scan-btn" class="btn btn-primary">Scan</button>
-  </section>
+  <div class="workspace" id="workspace">
+    <aside class="scan-sidebar">
+      <h2 class="scan-sidebar-title">Scan a skill</h2>
+      <div class="scan-field">
+        <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, local path, or .zip" />
+        <span id="source-type" class="source-type" hidden></span>
+      </div>
+      <label class="llm-toggle">
+        <input type="checkbox" id="use-llm" />
+        LLM review
+      </label>
+      <button id="scan-btn" class="btn btn-primary">Scan</button>
+      <div id="scan-status" class="scan-status" role="status" hidden></div>
+    </aside>
 
-  <div id="scan-status" class="scan-status" role="status" hidden></div>
-
-  <section id="list-view">
-    <div id="log-summary" class="log-summary" hidden></div>
-    <div class="skill-table-wrap">
-      <table class="skill-table">
-        <thead>
-          <tr>
-            <th class="col-name" scope="col">Skill</th>
-            <th class="col-score" scope="col">Score</th>
-            <th class="col-verdict" scope="col">Verdict</th>
-            <th class="col-date" scope="col">Last scanned</th>
-            <th class="col-status" scope="col">Gate</th>
-          </tr>
-        </thead>
-        <tbody id="skill-rows">
-        </tbody>
-      </table>
-    </div>
-    <p id="empty-state" class="empty-state" hidden>
-      No skills scanned yet. Paste a source above and run a scan.
-    </p>
-  </section>
+    <section id="list-view">
+      <div id="log-summary" class="log-summary" hidden></div>
+      <div class="skill-table-wrap">
+        <table class="skill-table">
+          <thead>
+            <tr>
+              <th class="col-name" scope="col">Skill</th>
+              <th class="col-score" scope="col">Score</th>
+              <th class="col-verdict" scope="col">Verdict</th>
+              <th class="col-date" scope="col">Last scanned</th>
+              <th class="col-status" scope="col">Gate</th>
+            </tr>
+          </thead>
+          <tbody id="skill-rows">
+          </tbody>
+        </table>
+      </div>
+      <p id="empty-state" class="empty-state" hidden>
+        No skills scanned yet. Paste a source on the left and run a scan.
+      </p>
+    </section>
+  </div>
 
   <section id="detail-view" hidden>
     <div class="detail-actions">

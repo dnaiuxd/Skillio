@@ -77,8 +77,9 @@ button {
   margin: 0 auto;
   padding: 20px 32px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px 24px;
 }
 
 .topbar-title {
@@ -112,7 +113,7 @@ button {
 .health.ok { color: var(--ok); }
 .health.bad { color: var(--critical); }
 
-/* ---------- Main / scan bar ---------- */
+/* ---------- Main / workspace ---------- */
 
 main {
   max-width: 1120px;
@@ -120,25 +121,77 @@ main {
   padding: 32px;
 }
 
-.scan-bar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 28px;
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 28fr) minmax(0, 72fr);
+  gap: 36px;
+  align-items: start;
 }
 
-.scan-bar[hidden] { display: none; }
+.workspace[hidden] { display: none; }
+
+/* ---------- Scan sidebar ---------- */
+
+.scan-sidebar {
+  position: sticky;
+  top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+}
+
+.scan-sidebar-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 2px;
+  color: var(--ink);
+}
+
+.scan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 #scan-input {
-  flex: 1;
-  padding: 12px 20px;
+  width: 100%;
+  padding: 12px 18px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 14px;
   background: var(--surface);
   color: var(--ink);
 }
+
+.source-type {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.source-type[hidden] { display: none; }
+
+.source-type::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+}
+
+.source-type--git::before { background: var(--ok); }
+.source-type--path::before { background: var(--medium); }
+.source-type--zip::before { background: var(--pending); }
 
 #scan-input:focus {
   outline: none;
@@ -159,11 +212,12 @@ main {
 
 .scan-status {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: -14px 0 24px;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0 0;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--ink-soft);
 }
 
@@ -194,10 +248,14 @@ main {
 .llm-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 15px;
+  gap: 8px;
+  font-size: 14px;
   color: var(--ink-soft);
   white-space: nowrap;
+}
+
+.scan-sidebar #scan-btn {
+  width: 100%;
 }
 
 .btn {
@@ -316,15 +374,10 @@ main {
   border-bottom: 1px solid var(--line-strong);
 }
 
-.skill-table .col-score,
-.skill-table .col-date {
-  width: 110px;
-}
-
-.skill-table .col-verdict,
-.skill-table .col-status {
-  width: 128px;
-}
+.skill-table .col-score { width: 92px; }
+.skill-table .col-date { width: 104px; }
+.skill-table .col-verdict { width: 120px; }
+.skill-table .col-status { width: 96px; }
 
 .skill-row {
   cursor: pointer;
@@ -336,7 +389,11 @@ main {
 .skill-row td {
   padding: 14px 10px;
   vertical-align: middle;
+  white-space: nowrap;
 }
+
+/* the name cell is the only one allowed to wrap */
+.skill-row td:first-child { white-space: normal; }
 
 .row-open {
   display: block;
@@ -721,11 +778,21 @@ main {
   color: var(--ink-soft);
 }
 
-@media (max-width: 640px) {
+/* Tablet & below — the scan sidebar stacks on top of the log */
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+  .scan-sidebar {
+    position: static;
+    max-width: 460px;
+  }
+}
+
+@media (max-width: 700px) {
   main { padding: 20px; }
-  .topbar-inner { padding: 16px 20px; flex-wrap: wrap; gap: 4px 12px; }
-  .scan-bar { flex-wrap: wrap; }
-  #scan-input { flex-basis: 100%; }
+  .topbar-inner { padding: 16px 20px; gap: 4px 16px; }
   /* drop "Verdict" and "Last scanned" — Score + Gate carry the triage signal */
   .skill-table thead th:nth-child(3),
   .skill-row td:nth-child(3),

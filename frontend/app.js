@@ -2,8 +2,9 @@ const API = "/api";
 
 const els = {
   health: document.getElementById("health"),
-  scanBar: document.querySelector(".scan-bar"),
+  workspace: document.getElementById("workspace"),
   scanInput: document.getElementById("scan-input"),
+  sourceType: document.getElementById("source-type"),
   scanBtn: document.getElementById("scan-btn"),
   scanStatus: document.getElementById("scan-status"),
   useLlm: document.getElementById("use-llm"),
@@ -49,6 +50,36 @@ function deriveName(source) {
   if (s.endsWith(".git")) s = s.slice(0, -4);
   const parts = s.split("/");
   return parts[parts.length - 1] || s;
+}
+
+// Recognise what kind of source the field currently holds, for the chip.
+function detectSourceType(raw) {
+  const v = (raw || "").trim();
+  if (!v) return null;
+  if (/\.zip$/i.test(v)) return { key: "zip", label: ".zip archive" };
+  if (
+    /^(https?:|git@|ssh:|git:)/i.test(v) ||
+    /\.git$/i.test(v) ||
+    /^(www\.)?(github|gitlab|bitbucket)\./i.test(v)
+  ) {
+    return { key: "git", label: "Git URL" };
+  }
+  if (/^(\/|~|\.\.?[/\\]|[a-zA-Z]:[/\\])/.test(v)) {
+    return { key: "path", label: "Local path" };
+  }
+  return { key: "other", label: "Unrecognized source" };
+}
+
+function updateSourceType() {
+  const t = detectSourceType(els.scanInput.value);
+  // Only confirm a recognised type; stay quiet otherwise.
+  if (!t || t.key === "other") {
+    els.sourceType.hidden = true;
+    return;
+  }
+  els.sourceType.textContent = t.label;
+  els.sourceType.className = `source-type source-type--${t.key}`;
+  els.sourceType.hidden = false;
 }
 
 function showScanStatus(msg, isError = false) {
@@ -217,6 +248,7 @@ async function runScan() {
       openDetail(skill.id);
     }
     els.scanInput.value = "";
+    updateSourceType();
   } catch (e) {
     showScanStatus(`Scan request failed: ${e.message}`, true);
   } finally {
@@ -227,8 +259,7 @@ async function runScan() {
 
 function showDetailView(show) {
   els.detailView.hidden = !show;
-  els.listView.hidden = show;
-  els.scanBar.hidden = show; // hide the scan bar while viewing a skill
+  els.workspace.hidden = show; // detail takes the full page; sidebar + log go away
 }
 
 async function openDetail(id) {
@@ -410,6 +441,7 @@ async function deleteSkill() {
 
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
+els.scanInput.addEventListener("input", updateSourceType);
 els.scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") runScan();
 });
