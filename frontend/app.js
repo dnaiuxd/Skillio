@@ -18,8 +18,11 @@ const els = {
   detailVerdict: document.getElementById("detail-verdict"),
   detailError: document.getElementById("detail-error"),
   findingsList: document.getElementById("findings-list"),
+  severityBreakdown: document.getElementById("severity-breakdown"),
   gateCurrent: document.getElementById("gate-current"),
 };
+
+const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
 
 let currentSkillId = null;
 
@@ -210,21 +213,65 @@ function renderDetail(skill) {
   renderFindings(skill.report);
 }
 
+function severityRank(sev) {
+  const i = SEVERITY_ORDER.indexOf((sev || "").toLowerCase());
+  return i === -1 ? SEVERITY_ORDER.length : i;
+}
+
+function countBySeverity(findings) {
+  const counts = Object.fromEntries(SEVERITY_ORDER.map((s) => [s, 0]));
+  for (const f of findings) {
+    const s = (f.severity || "").toLowerCase();
+    counts[s in counts ? s : "info"]++;
+  }
+  return counts;
+}
+
+function renderSeverityBreakdown(findings) {
+  const el = els.severityBreakdown;
+  if (!findings || findings.length === 0) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+
+  const counts = countBySeverity(findings);
+  const max = Math.max(1, ...SEVERITY_ORDER.map((s) => counts[s]));
+
+  const rows = SEVERITY_ORDER.map((sev) => {
+    const n = counts[sev];
+    const width = ((n / max) * 100).toFixed(1);
+    return `
+      <div class="sev-row${n === 0 ? " sev-row--empty" : ""}">
+        <span class="sev-label">${sev}</span>
+        <span class="sev-track"><span class="sev-bar" style="width:${width}%"></span></span>
+        <span class="sev-count">${n}</span>
+      </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <figcaption class="severity-breakdown-head">
+      <span>Findings by severity</span>
+      <span>${findings.length} total</span>
+    </figcaption>
+    ${rows}`;
+  el.hidden = false;
+}
+
 function renderFindings(report) {
   els.findingsList.innerHTML = "";
   const findings = report && (report.findings || report.results || []);
+
+  renderSeverityBreakdown(findings || []);
 
   if (!findings || findings.length === 0) {
     els.findingsList.innerHTML = `<div class="no-findings">No findings in this report.</div>`;
     return;
   }
 
-  const order = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-  const sorted = [...findings].sort((a, b) => {
-    const sa = order[(a.severity || "").toLowerCase()] ?? 99;
-    const sb = order[(b.severity || "").toLowerCase()] ?? 99;
-    return sa - sb;
-  });
+  const sorted = [...findings].sort(
+    (a, b) => severityRank(a.severity) - severityRank(b.severity)
+  );
 
   for (const f of sorted) {
     const div = document.createElement("div");

@@ -16,11 +16,13 @@
 <body>
 
 <header class="topbar">
-  <div class="topbar-title">
-    <img class="mark" src="mark.svg" alt="" />
-    <h1>SkillSpector</h1>
+  <div class="topbar-inner">
+    <div class="topbar-title">
+      <img class="mark" src="mark.svg" alt="" />
+      <h1>SkillSpector</h1>
+    </div>
+    <div id="health" class="health">checking installation…</div>
   </div>
-  <div id="health" class="health">checking installation…</div>
 </header>
 
 <main>
@@ -86,6 +88,7 @@
 
     <div id="findings-wrap">
       <h3 class="findings-heading">Findings</h3>
+      <figure id="severity-breakdown" class="severity-breakdown" hidden></figure>
       <div id="findings-list" class="findings-list"></div>
     </div>
   </section>
