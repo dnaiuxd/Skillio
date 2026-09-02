@@ -113,6 +113,10 @@ start. Open **http://localhost:8787**.
 
 ## Notes
 
+- Fonts are self-hosted (latin `.woff2` subsets in `frontend/fonts/`, no
+  CDN call): Yellowtail for the wordmark, Montserrat for headings, Open
+  Sans for body/UI, system mono for code. Licenses sit next to the files
+  (OFL for Montserrat/Open Sans, Apache-2.0 for Yellowtail).
 - Data lives in `backend/skillspector_gui.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - The findings parser expects roughly the shape SkillSpector's `--format

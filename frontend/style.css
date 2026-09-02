@@ -1,3 +1,29 @@
+/* ---------- Fonts (self-hosted latin subsets — see fonts/LICENSE-*) ---------- */
+
+@font-face {
+  font-family: "Yellowtail";
+  src: url("fonts/yellowtail-latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Open Sans";
+  src: url("fonts/open-sans-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Montserrat";
+  src: url("fonts/montserrat-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Cream + black, taken from the logo (#F5ECE3 / #000). */
   --bg: #f5ece3;
@@ -14,7 +40,9 @@
   --pending: #5e574d;
 
   --mono: ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
-  --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-body: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-heading: "Montserrat", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Yellowtail", "Snell Roundhand", "Brush Script MT", cursive;
 
   color-scheme: light;
 }
@@ -26,7 +54,7 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: var(--sans);
+  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -62,10 +90,12 @@ button {
 }
 
 .topbar-title h1 {
-  font-size: 17px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
   margin: 0;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .health {
@@ -164,13 +194,13 @@ main {
 }
 
 .btn {
-  padding: 11px 18px;
+  padding: 11px 28px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--ink);
-  border-radius: 2px;
+  border-radius: 999px;
   background: var(--surface);
   color: var(--ink);
   font-weight: 600;
@@ -233,6 +263,7 @@ main {
 
 .skill-table thead th {
   text-align: left;
+  font-family: var(--font-heading);
   font-size: 11px;
   font-weight: 600;
   color: var(--ink-soft);
@@ -305,8 +336,8 @@ main {
 
 .pill {
   display: inline-block;
-  padding: 3px 8px;
-  border-radius: 2px;
+  padding: 3px 10px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
   border: 1px solid currentColor;
@@ -335,7 +366,9 @@ main {
 }
 
 #detail-name {
+  font-family: var(--font-heading);
   font-size: 22px;
+  font-weight: 700;
   margin: 0 0 4px;
 }
 
@@ -385,7 +418,7 @@ main {
 }
 
 .gate-btn {
-  padding: 8px 14px;
+  padding: 8px 22px;
   min-height: 44px;
   font-size: 12px;
 }
@@ -408,6 +441,7 @@ main {
 }
 
 .findings-heading {
+  font-family: var(--font-heading);
   font-size: 13px;
   text-transform: none;
   color: var(--ink-soft);
