@@ -88,8 +88,8 @@ button {
 }
 
 .topbar-title .mark {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: block;
   flex-shrink: 0;
 }
@@ -263,18 +263,24 @@ main {
 
 .log-summary {
   display: flex;
-  gap: 36px;
-  padding: 2px 10px 18px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--line-strong);
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 22px;
 }
 
 .log-summary[hidden] { display: none; }
 
 .stat {
+  flex: 1 1 120px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
 }
 
 .stat-num {
@@ -304,6 +310,7 @@ main {
   font-family: var(--font-heading);
   font-size: 12px;
   font-weight: 600;
+  text-transform: capitalize;
   color: var(--ink-soft);
   padding: 0 10px 10px;
   border-bottom: 1px solid var(--line-strong);
@@ -392,6 +399,17 @@ main {
 .pill-ok { background: var(--ok); }
 .pill-pending { background: var(--pending); }
 
+/* Gate cell — plain coloured text, not a badge */
+.gate-text {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.gate-text--ok { color: var(--ok); }
+.gate-text--critical { color: var(--critical); }
+.gate-text--pending { color: var(--ink-soft); }
+
 .empty-state {
   color: var(--ink-soft);
   padding: 40px 10px;
@@ -425,9 +443,10 @@ main {
 }
 
 .detail-score-block {
-  text-align: right;
+  width: 188px;
   flex-shrink: 0;
-  margin-left: 20px;
+  margin-left: 24px;
+  text-align: left;
 }
 
 .detail-score {
@@ -451,9 +470,9 @@ main {
 /* 0–100 score meter with threshold zones (≤20 ok · 21–50 medium · >50 critical) */
 .score-meter {
   position: relative;
-  width: 168px;
+  width: 100%;
   height: 6px;
-  margin: 12px 0 0 auto;
+  margin: 14px 0 0;
 }
 
 .score-meter[hidden] { display: none; }
@@ -483,6 +502,7 @@ main {
 
 .gate-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 24px;
@@ -632,15 +652,15 @@ main {
   .topbar-inner { padding: 16px 20px; flex-wrap: wrap; gap: 4px 12px; }
   .scan-bar { flex-wrap: wrap; }
   #scan-input { flex-basis: 100%; }
-  /* drop "Last scanned" and "Verdict" — Score + Gate carry the triage signal */
-  .skill-table thead th:last-child,
-  .skill-row td:last-child,
+  /* drop "Verdict" and "Last scanned" — Score + Gate carry the triage signal */
   .skill-table thead th:nth-child(3),
-  .skill-row td:nth-child(3) { display: none; }
+  .skill-row td:nth-child(3),
+  .skill-table thead th:nth-child(4),
+  .skill-row td:nth-child(4) { display: none; }
   .skill-table .col-score,
   .skill-table .col-status { width: auto; }
   .skill-table thead th,
   .skill-row td { padding-left: 6px; padding-right: 6px; }
   .detail-head { flex-direction: column; }
-  .detail-score-block { text-align: left; margin: 12px 0 0; }
+  .detail-score-block { width: auto; margin: 14px 0 0; }
 }

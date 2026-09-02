@@ -137,8 +137,8 @@ function renderSkillList(skills) {
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
       <td><span class="pill pill-${sevClass}">${escapeHtml(humanize(s.verdict) || (s.error ? "error" : "—"))}</span></td>
-      <td><span class="pill pill-${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
       <td>${fmtDate(s.last_scanned)}</td>
+      <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
     `;
 
     const openBtn = tr.querySelector(".row-open");
