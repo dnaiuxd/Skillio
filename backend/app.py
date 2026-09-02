@@ -11,6 +11,7 @@ Run with:
 Requires `skillspector` to be installed and on PATH (see the SkillSpector
 README: git clone + `uv venv` + `make install`).
 """
+import hashlib
 import json
 import mimetypes
 import os
@@ -135,6 +136,35 @@ def _run_scan(source: str, use_llm: bool) -> dict:
     return report
 
 
+def _report_fingerprint(report: Optional[dict]) -> Optional[str]:
+    """Identity of a report's *risk content* — score, verdict, and which
+    findings were raised. Re-running an unchanged skill yields the same
+    fingerprint; a changed skill yields a different one."""
+    if not isinstance(report, dict):
+        return None
+    score, verdict = _extract_score_and_verdict(report)
+    issues = report.get("issues") or report.get("findings") or report.get("results") or []
+    ids = []
+    if isinstance(issues, list):
+        for issue in issues:
+            if not isinstance(issue, dict):
+                continue
+            ids.append(
+                str(
+                    issue.get("match_fingerprint")
+                    or issue.get("finding_id")
+                    or issue.get("id")
+                    or issue.get("pattern")
+                    or ""
+                )
+            )
+    payload = json.dumps(
+        {"score": score, "verdict": verdict, "findings": sorted(ids)},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _first_present(report: dict, *keys):
     """First key whose value is not None — so a real 0 isn't skipped."""
     for key in keys:
@@ -222,7 +252,7 @@ def scan(req: ScanRequest) -> dict:
     score, verdict = _extract_score_and_verdict(report)
     return storage.upsert_scan(
         source=source, name=name, score=score, verdict=verdict,
-        report=report, error=None,
+        report=report, error=None, fingerprint=_report_fingerprint(report),
     )
 
 
@@ -243,6 +273,7 @@ async def scan_upload(
     tmppath = os.path.join(tmpdir, filename)
     try:
         written = 0
+        digest = hashlib.sha256()
         with open(tmppath, "wb") as out:
             while chunk := await file.read(1024 * 1024):
                 written += len(chunk)
@@ -250,21 +281,27 @@ async def scan_upload(
                     raise HTTPException(
                         status_code=413, detail="Upload exceeds the 100 MB limit"
                     )
+                digest.update(chunk)
                 out.write(chunk)
 
+        # Identify an upload by its CONTENT, not its filename — otherwise two
+        # unrelated files both called "skill.zip" collapse into one row and the
+        # second inherits the gate decision made about the first.
         name = _derive_name(filename)
+        source = f"{filename} · upload:{digest.hexdigest()[:16]}"
+
         try:
             report = _run_scan(tmppath, use_llm)
         except RuntimeError as exc:
             return storage.upsert_scan(
-                source=filename, name=name, score=None, verdict=None,
+                source=source, name=name, score=None, verdict=None,
                 report=None, error=str(exc),
             )
 
         score, verdict = _extract_score_and_verdict(report)
         return storage.upsert_scan(
-            source=filename, name=name, score=score, verdict=verdict,
-            report=report, error=None,
+            source=source, name=name, score=score, verdict=verdict,
+            report=report, error=None, fingerprint=_report_fingerprint(report),
         )
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

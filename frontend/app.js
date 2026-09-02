@@ -446,17 +446,30 @@ function renderDetail(skill) {
   // for but no provider is configured — say so rather than passing it off as
   // a full scan.
   const meta = (skill.report && skill.report.metadata) || {};
-  const llmSkipped = !!meta.llm_requested && !meta.llm_available;
-  els.detailError.classList.toggle("detail-error--warn", !skill.error && llmSkipped);
+  const notices = [];
+  if (skill.gate_cleared) {
+    notices.push(
+      "This skill changed since you gated it, so the previous decision was " +
+        "cleared. Review the findings below and decide again."
+    );
+  }
+  if (meta.llm_requested && !meta.llm_available) {
+    notices.push(
+      "LLM review was requested but no provider was configured, so this is a " +
+        "static-only scan. Set SKILLSPECTOR_PROVIDER and the matching API key, " +
+        "then scan again."
+    );
+  }
+  els.detailError.classList.toggle(
+    "detail-error--warn",
+    !skill.error && notices.length > 0
+  );
   if (skill.error) {
     els.detailError.hidden = false;
     els.detailError.textContent = skill.error;
-  } else if (llmSkipped) {
+  } else if (notices.length) {
     els.detailError.hidden = false;
-    els.detailError.textContent =
-      "LLM review was requested but no provider was configured, so this is a " +
-      "static-only scan. Set SKILLSPECTOR_PROVIDER and the matching API key, " +
-      "then scan again.";
+    els.detailError.textContent = notices.join("\n\n");
   } else {
     els.detailError.hidden = true;
   }
