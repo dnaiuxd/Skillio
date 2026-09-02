@@ -478,6 +478,16 @@ main {
   margin-top: 4px;
 }
 
+.detail-verdict-label--danger {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--critical);
+}
+
 /* 0–100 score meter with threshold zones (≤20 ok · 21–50 medium · >50 critical) */
 .score-meter {
   position: relative;

@@ -252,6 +252,11 @@ function renderDetail(skill) {
   else if (skill.error) verdictParts.push("scan failed");
   else if (!sevWord) verdictParts.push("no verdict");
   els.detailVerdict.textContent = verdictParts.join(" · ");
+  // Red badge only for the high-risk "do not install" case; otherwise quiet text.
+  els.detailVerdict.classList.toggle(
+    "detail-verdict-label--danger",
+    sevClass === "critical"
+  );
 
   els.gateCurrent.textContent = `currently: ${skill.status}`;
 
