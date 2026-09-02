@@ -123,8 +123,8 @@ main {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 28fr) minmax(0, 72fr);
-  gap: 36px;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 32px;
   align-items: start;
 }
 
@@ -374,10 +374,10 @@ main {
   border-bottom: 1px solid var(--line-strong);
 }
 
-.skill-table .col-score { width: 92px; }
-.skill-table .col-date { width: 104px; }
-.skill-table .col-verdict { width: 120px; }
-.skill-table .col-status { width: 96px; }
+.skill-table .col-score { width: 100px; }
+.skill-table .col-date { width: 116px; }
+.skill-table .col-verdict { width: 128px; }
+.skill-table .col-status { width: 104px; }
 
 .skill-row {
   cursor: pointer;
