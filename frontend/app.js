@@ -2,7 +2,7 @@ const API = "/api";
 
 const els = {
   health: document.getElementById("health"),
-  workspace: document.getElementById("workspace"),
+  app: document.getElementById("app"),
   scanInput: document.getElementById("scan-input"),
   sourceType: document.getElementById("source-type"),
   scanBtn: document.getElementById("scan-btn"),
@@ -259,7 +259,9 @@ async function runScan() {
 
 function showDetailView(show) {
   els.detailView.hidden = !show;
-  els.workspace.hidden = show; // detail takes the full page; sidebar + log go away
+  els.listView.hidden = show;
+  // detail takes the full width; the scan sidebar + log go away
+  els.app.classList.toggle("detail-open", show);
 }
 
 async function openDetail(id) {

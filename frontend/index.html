@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SkillSpector — Scan Log</title>
+<title>SkillSpector — Agent skill security scanner</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <link rel="manifest" href="manifest.webmanifest" />
@@ -25,24 +25,26 @@
   </div>
 </header>
 
-<main>
+<div class="app" id="app">
 
-  <div class="workspace" id="workspace">
-    <aside class="scan-sidebar">
-      <h2 class="scan-sidebar-title">Scan a skill</h2>
-      <div class="scan-field">
-        <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, path, or .zip" />
-        <span id="source-type" class="source-type" hidden></span>
-      </div>
-      <label class="llm-toggle">
-        <input type="checkbox" id="use-llm" />
-        LLM review
-      </label>
-      <button id="scan-btn" class="btn btn-primary">Scan</button>
-      <div id="scan-status" class="scan-status" role="status" hidden></div>
-    </aside>
+  <aside class="scan-sidebar">
+    <h2 class="scan-sidebar-title">Scan a skill</h2>
+    <div class="scan-field">
+      <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip" placeholder="Git URL, path, or .zip" />
+      <span id="source-type" class="source-type" hidden></span>
+    </div>
+    <label class="llm-toggle">
+      <input type="checkbox" id="use-llm" />
+      LLM review
+    </label>
+    <button id="scan-btn" class="btn btn-primary">Scan</button>
+    <div id="scan-status" class="scan-status" role="status" hidden></div>
+  </aside>
+
+  <main>
 
     <section id="list-view">
+      <h2 class="list-title">Scan log</h2>
       <div id="log-summary" class="log-summary" hidden></div>
       <div class="skill-table-wrap">
         <table class="skill-table">
@@ -63,9 +65,8 @@
         No skills scanned yet. Paste a source on the left and run a scan.
       </p>
     </section>
-  </div>
 
-  <section id="detail-view" hidden>
+    <section id="detail-view" hidden>
     <div class="detail-actions">
       <button id="back-btn" class="btn-text">← Back to log</button>
       <button id="delete-btn" class="btn-text btn-text-danger">Delete from log</button>
@@ -101,9 +102,11 @@
       <figure id="severity-breakdown" class="severity-breakdown" hidden></figure>
       <div id="findings-list" class="findings-list"></div>
     </div>
-  </section>
+    </section>
 
-</main>
+  </main>
+
+</div>
 
 <script src="app.js"></script>
 </body>
