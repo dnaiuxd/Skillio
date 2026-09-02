@@ -401,6 +401,14 @@ main {
 .pill-ok { background: var(--ok); }
 .pill-pending { background: var(--pending); }
 
+/* Verdict cell — quiet text unless it's the high-risk "do not install"
+   case, which keeps the solid red .pill treatment. */
+.verdict-text {
+  font-size: 13px;
+  text-transform: capitalize;
+  color: var(--ink-soft);
+}
+
 /* Gate cell — plain coloured text, not a badge */
 .gate-text {
   font-size: 13px;

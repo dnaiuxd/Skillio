@@ -125,6 +125,14 @@ function renderSkillList(skills) {
     const sevClass = severityClass(s.score);
     const sevWord = severityWord(s.score);
 
+    const verdictText = humanize(s.verdict) || (s.error ? "error" : "—");
+    // Only a "do not install" (high-risk) verdict gets the solid red badge;
+    // everything else is quiet text.
+    const verdictCell =
+      sevClass === "critical"
+        ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
+        : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
+
     tr.innerHTML = `
       <td>
         <button type="button" class="row-open">
@@ -136,7 +144,7 @@ function renderSkillList(skills) {
         <span class="score-badge score-badge--${sevClass}">${s.score ?? "—"}</span>
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
-      <td><span class="pill pill-${sevClass}">${escapeHtml(humanize(s.verdict) || (s.error ? "error" : "—"))}</span></td>
+      <td>${verdictCell}</td>
       <td>${fmtDate(s.last_scanned)}</td>
       <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
     `;
