@@ -345,15 +345,16 @@ function coverageNotice(report) {
   const reasons = seen.map((c) => COVERAGE_REASONS[c] || humanize(c));
   let why = "";
   if (reasons.length === 1) {
-    why = ` Reason: ${reasons[0]}.`;
+    why = `\nReason: ${reasons[0]}.`;
   } else if (reasons.length > 1) {
     why =
-      ` Reasons: ${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}.`;
+      `\nReasons: ${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}.`;
   }
 
+  // \n renders as a line break — .detail-error is white-space: pre-wrap.
   return (
     `This scan was incomplete — SkillSpector ${what}, so parts of it were ` +
-    `never checked.${why} A low score here means nothing was found in the ` +
+    `never checked.${why}\nA low score here means nothing was found in the ` +
     `parts it could read, which is not the same as the skill being safe.`
   );
 }
