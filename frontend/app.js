@@ -299,12 +299,23 @@ function updateGateControls(archived) {
 function renderScanMeta(skill) {
   const meta = (skill.report && skill.report.metadata) || {};
   const chips = [];
-  if (meta.llm_requested && meta.llm_available) chips.push("LLM review");
+  if (meta.llm_requested && meta.llm_available) chips.push("Review using LLM");
   els.scanMeta.innerHTML = chips
     .map((c) => `<span class="scan-meta-chip">${escapeHtml(c)}</span>`)
     .join("");
   els.scanMeta.hidden = chips.length === 0;
 }
+
+// SkillSpector's reason codes, in words someone deciding whether to install
+// something can act on.
+const COVERAGE_REASONS = {
+  static_parse_limit: "part of the code was too complex to parse",
+  reference_unresolved: "some file references couldn't be followed",
+  runtime_limit: "the scan ran out of time",
+  obfuscated_instruction_text: "some text was deliberately obfuscated",
+  file_too_large: "a file was too large to read",
+  binary_content: "some files were binary and couldn't be read",
+};
 
 // "Nothing found" and "couldn't read it" must not look the same in a security
 // tool. Only warn when files genuinely weren't fully inspected — an ambiguous
@@ -319,25 +330,31 @@ function coverageNotice(report) {
     partial > 0 || skipped > 0 || (typeof coverage === "number" && coverage < 100);
   if (!shortfall) return null;
 
-  const counts = {};
-  for (const ex of ac.ledger_exceptions || []) {
-    const code = ex.reason_code || "unknown";
-    counts[code] = (counts[code] || 0) + 1;
-  }
-  const reasons = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([code, n]) => `${humanize(code)} (${n})`)
-    .join(", ");
-
-  const total = ac.total_components ?? "?";
+  const total = ac.total_components ?? 0;
   const full = ac.fully_inspected_files ?? 0;
+  let what;
+  if (total === 1) what = "couldn't fully read the one file in this skill";
+  else if (full === 0) what = `couldn't fully read any of its ${total} files`;
+  else what = `only fully read ${full} of its ${total} files`;
+
+  const seen = [];
+  for (const ex of ac.ledger_exceptions || []) {
+    const code = ex.reason_code;
+    if (code && !seen.includes(code)) seen.push(code);
+  }
+  const reasons = seen.map((c) => COVERAGE_REASONS[c] || humanize(c));
+  let why = "";
+  if (reasons.length === 1) {
+    why = ` Reason: ${reasons[0]}.`;
+  } else if (reasons.length > 1) {
+    why =
+      ` Reasons: ${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}.`;
+  }
+
   return (
-    `SkillSpector only partially inspected this skill — ${full} of ${total} ` +
-    `components fully read` +
-    (typeof coverage === "number" ? `, ${coverage}% coverage` : "") +
-    (reasons ? `. Blocked by: ${reasons}` : "") +
-    `. Treat a clean result as "nothing found in what could be read", not ` +
-    `"confirmed safe".`
+    `This scan was incomplete — SkillSpector ${what}, so parts of it were ` +
+    `never checked.${why} A low score here means nothing was found in the ` +
+    `parts it could read, which is not the same as the skill being safe.`
   );
 }
 

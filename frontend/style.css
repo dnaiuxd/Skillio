@@ -1120,10 +1120,14 @@ main {
   white-space: pre-wrap;
 }
 
-/* a caveat about the scan, not a failure of it */
+/* A caveat about the scan, not a failure of it. Mono is right for a stderr
+   dump but wrong for prose, so notices read in the body face. */
 .detail-error--warn {
   border-color: var(--medium);
   color: var(--medium);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 /* ---------- Findings by severity (bar chart) ---------- */
