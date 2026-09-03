@@ -46,7 +46,10 @@ const els = {
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
 };
 
-const SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+// SkillSpector defines exactly these four (_SEVERITY_POINTS / _SEVERITY_RANK
+// in nodes/report.py). There is no INFO level — a fifth row here was always
+// rendering a permanent zero.
+const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
 let currentSkillId = null;
 let scanning = false;
@@ -54,26 +57,44 @@ let stagedFile = null;
 let showingArchived = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
-function severityClass(score) {
-  if (score == null) return "pending";
-  if (score > 50) return "critical";
-  if (score > 20) return "medium";
-  return "ok";
-}
-
+// Mirrors SkillSpector's _RISK_SEVERITY_BANDS — [(81, CRITICAL), (51, HIGH),
+// (21, MEDIUM), (0, LOW)]. Only a fallback: a report states its own band and
+// severityBand() prefers it. This exists for rows that have no report at all
+// (a failed scan) or a shape we don't recognise.
 function severityWord(score) {
   if (score == null) return null;
+  if (score > 80) return "critical";
   if (score > 50) return "high";
   if (score > 20) return "medium";
   return "low";
 }
 
+// The band SkillSpector itself assigned. Reading it rather than re-deriving
+// keeps one source of truth: if NVIDIA retunes the thresholds, we follow
+// automatically instead of quietly disagreeing with the tool we're wrapping.
+function severityBand(skill) {
+  const ra = (skill && skill.report && skill.report.risk_assessment) || null;
+  const stated = ra && typeof ra.severity === "string" ? ra.severity.toLowerCase() : "";
+  if (SEVERITY_ORDER.includes(stated)) return stated;
+  return severityWord(skill ? skill.score : null);
+}
+
+// CRITICAL and HIGH share the red treatment — both are DO_NOT_INSTALL, and
+// inventing a fifth colour to split them would imply a distinction the gate
+// doesn't make. The band still shows its real name in text.
+function bandClass(band) {
+  if (band === "critical" || band === "high") return "critical";
+  if (band === "medium") return "medium";
+  if (band === "low") return "ok";
+  return "pending";
+}
+
 // The solid red treatment is reserved for the high-risk "do not install"
 // call — either SkillSpector recommended it, or our score band is critical.
-function isHighRisk(score, verdict) {
+function isHighRisk(skill) {
   return (
-    severityClass(score) === "critical" ||
-    /do[ _-]?not[ _-]?install/i.test(verdict || "")
+    bandClass(severityBand(skill)) === "critical" ||
+    /do[ _-]?not[ _-]?install/i.test((skill && skill.verdict) || "")
   );
 }
 
@@ -236,13 +257,13 @@ function renderSkillList(skills) {
     const tr = document.createElement("tr");
     tr.className = "skill-row";
 
-    const sevClass = severityClass(s.score);
-    const sevWord = severityWord(s.score);
+    const sevWord = severityBand(s);
+    const sevClass = bandClass(sevWord);
 
     const verdictText = humanize(s.verdict) || (s.error ? "error" : "—");
     // Only the high-risk "do not install" call gets the solid red badge;
     // everything else is quiet text.
-    const verdictCell = isHighRisk(s.score, s.verdict)
+    const verdictCell = isHighRisk(s)
       ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
       : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
 
@@ -518,7 +539,7 @@ function renderDetail(skill) {
   els.deleteBtn.hidden = !skill.archived;
   updateGateControls(skill.archived, skill.status);
 
-  const sevClass = severityClass(skill.score);
+  const sevClass = bandClass(severityBand(skill));
   els.detailScore.textContent = skill.score ?? "—";
   els.detailScore.className = `detail-score detail-score--${sevClass}`;
 
@@ -529,7 +550,7 @@ function renderDetail(skill) {
     els.scoreMeter.hidden = true;
   }
 
-  const sevWord = severityWord(skill.score);
+  const sevWord = severityBand(skill);
   const verdictParts = [];
   if (sevWord) verdictParts.push(`${sevWord} risk`);
   if (skill.verdict) verdictParts.push(humanize(skill.verdict));
@@ -539,7 +560,7 @@ function renderDetail(skill) {
   // Red badge only for the high-risk "do not install" case; otherwise quiet text.
   els.detailVerdict.classList.toggle(
     "detail-verdict-label--danger",
-    isHighRisk(skill.score, skill.verdict)
+    isHighRisk(skill)
   );
 
   renderGateCurrent(skill.status);
@@ -549,6 +570,23 @@ function renderDetail(skill) {
   // a full scan.
   const meta = (skill.report && skill.report.metadata) || {};
   const notices = [];
+  // SkillSpector fails closed: a LOW band that would normally read SAFE is
+  // downgraded to CAUTION when the scan was degraded or incomplete
+  // (nodes/report.py). Without saying so, "0 · Low Risk · Caution" looks
+  // like the tool contradicting itself.
+  const ra = (skill.report && skill.report.risk_assessment) || {};
+  const recommendation = String(ra.recommendation || "").toUpperCase();
+  if (
+    String(ra.severity || "").toUpperCase() === "LOW" &&
+    recommendation &&
+    recommendation !== "SAFE"
+  ) {
+    notices.push(
+      "Scored low risk, but not marked safe. SkillSpector won't call a scan " +
+        "safe when it couldn't finish inspecting everything — the score " +
+        "reflects what it managed to check, not what it missed."
+    );
+  }
   if (skill.gate_cleared) {
     notices.push(
       "This skill changed since you gated it, so the previous decision was " +
@@ -575,6 +613,10 @@ function renderDetail(skill) {
     els.detailError.hidden = false;
     els.detailError.textContent = notices.join("\n\n");
   } else {
+    // Clear, don't just hide: leaving the previous skill's notice in the DOM
+    // means any future path that unhides this element shows a warning about
+    // something else entirely.
+    els.detailError.textContent = "";
     els.detailError.hidden = true;
   }
 
@@ -657,11 +699,15 @@ function findingPillClass(severity) {
   return "pill-ok pill--soft";
 }
 
+// Anything outside the four known bands lands in "other". It gets a row only
+// when it actually occurs, so an unexpected level from a future SkillSpector
+// can't silently vanish from a chart that's supposed to add up.
 function countBySeverity(findings) {
   const counts = Object.fromEntries(SEVERITY_ORDER.map((s) => [s, 0]));
+  counts.other = 0;
   for (const f of findings) {
     const s = (f.severity || "").toLowerCase();
-    counts[s in counts ? s : "info"]++;
+    counts[SEVERITY_ORDER.includes(s) ? s : "other"]++;
   }
   return counts;
 }
@@ -675,9 +721,10 @@ function renderSeverityBreakdown(findings) {
   }
 
   const counts = countBySeverity(findings);
-  const max = Math.max(1, ...SEVERITY_ORDER.map((s) => counts[s]));
+  const bands = counts.other > 0 ? [...SEVERITY_ORDER, "other"] : SEVERITY_ORDER;
+  const max = Math.max(1, ...bands.map((s) => counts[s]));
 
-  const rows = SEVERITY_ORDER.map((sev) => {
+  const rows = bands.map((sev) => {
     const n = counts[sev];
     const width = ((n / max) * 100).toFixed(1);
     return `

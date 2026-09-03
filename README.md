@@ -150,9 +150,14 @@ start. Open **http://localhost:8787**.
   their contents, so two unrelated files both named `skill.zip` stay
   separate rows instead of overwriting each other.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
-  verdict, and gate status at a glance; the score is color-coded
-  (green ≤ 20, amber 21–50, red > 50). The **Scanned Skill / Archived**
-  toggle switches which set you're looking at.
+  verdict, and gate status at a glance. The risk band comes from the
+  report's own `risk_assessment.severity` rather than being re-derived
+  here, so it can't drift from what SkillSpector decided — four bands,
+  matching its `_RISK_SEVERITY_BANDS`: LOW 0–20, MEDIUM 21–50, HIGH
+  51–80, CRITICAL 81–100. HIGH and CRITICAL share the red treatment
+  because both mean DO NOT INSTALL, but each still shows its own name.
+  The **Scanned Skill / Archived** toggle switches which set you're
+  looking at.
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
   found, or the source is unreachable). An **LLM review** chip appears when
@@ -196,8 +201,13 @@ start. Open **http://localhost:8787**.
   (OFL for Montserrat/Open Sans, Apache-2.0 for Yellowtail).
 - Data lives in `backend/skillspector_gui.db` (SQLite, git-ignored) —
   delete it to reset the log.
+- SkillSpector fails closed: a LOW-band result that would normally read
+  SAFE is downgraded to CAUTION whenever the scan was degraded or
+  incomplete. That's why a skill can score 0 and still say Caution — the
+  detail page says so explicitly rather than leaving it looking like a
+  contradiction.
 - The parser targets SkillSpector v2.11's `--format json` shape:
-  `risk_assessment.{score,recommendation}` for the headline, and an
+  `risk_assessment.{score,severity,recommendation}` for the headline, and an
   `issues[]` array (one entry per code location — the GUI collapses
   repeats of a `finding_id` into one row) with `severity`, `location`,
   `pattern`, `explanation`, `remediation`. Older top-level keys
