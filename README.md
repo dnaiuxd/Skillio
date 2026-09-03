@@ -173,6 +173,10 @@ start. Open **http://localhost:8787**.
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own
   install scripts if you want it to be enforced.
+  **Install Status** reads Pending until you decide, then Approved or Not
+  Approved. Deciding hides both buttons and leaves a **Reset**, which
+  clears the gate back to Pending and hands them back — so a decision is
+  deliberate but never a trap.
   A decision applies to the report you saw, so if a re-scan comes back
   different — the score, the verdict, or which findings were raised — the
   gate resets to pending and says so on the detail page. An identical

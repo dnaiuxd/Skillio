@@ -212,7 +212,7 @@ function renderLogSummary(skills) {
   const tiles = [
     ["scanned", skills.length],
     ["approved", count("approved")],
-    ["rejected", count("rejected")],
+    ["not approved", count("rejected")],
     ["pending", count("pending")],
   ];
   el.innerHTML = tiles
@@ -259,7 +259,7 @@ function renderSkillList(skills) {
       </td>
       <td>${verdictCell}</td>
       <td>${fmtDate(s.last_scanned)}</td>
-      <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(s.status)}</span></td>
+      <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(gateStatusLabel(s.status))}</span></td>
     `;
 
     const openBtn = tr.querySelector(".row-open");
@@ -283,18 +283,30 @@ function gateClass(status) {
   return "pending";
 }
 
-function renderGateCurrent(status) {
-  els.gateCurrent.innerHTML =
-    `<span class="gate-current-label">currently:</span>` +
-    `<span class="gate-current-value gate-current-value--${gateClass(status)}">${escapeHtml(status)}</span>`;
+// The stored status stays "rejected" — this is display only. "Not approved"
+// reads as the counterpart to the Install / Do Not Install pair; "rejected"
+// sounds like the scan failed. Lowercase because the CSS capitalizes.
+function gateStatusLabel(status) {
+  if (status === "rejected") return "not approved";
+  return status || "pending";
 }
 
-// Active items show Install / Do Not Install. Archived items show a lone
-// Reset — which restores the item and hands it back the decision buttons.
-function updateGateControls(archived) {
-  els.gateReset.hidden = !archived;
-  els.gateApprove.hidden = archived;
-  els.gateReject.hidden = archived;
+function renderGateCurrent(status) {
+  els.gateCurrent.innerHTML =
+    `<span class="gate-current-label">install status</span>` +
+    `<span class="gate-current-value gate-current-value--${gateClass(status)}">` +
+    `${escapeHtml(gateStatusLabel(status))}</span>`;
+}
+
+// Three states, and only one set of controls is ever live:
+//   undecided  -> Install / Do Not Install
+//   decided    -> Reset, so a decision stays changeable once the pair is gone
+//   archived   -> Reset, which also restores the item to the log
+function updateGateControls(archived, status) {
+  const decided = status === "approved" || status === "rejected";
+  els.gateApprove.hidden = archived || decided;
+  els.gateReject.hidden = archived || decided;
+  els.gateReset.hidden = !archived && !decided;
 }
 
 // Scope of the scan, stated up front: how many files it covered and whether
@@ -504,7 +516,7 @@ function renderDetail(skill) {
   els.archiveBtn.hidden = skill.archived;
   els.restoreBtn.hidden = !skill.archived;
   els.deleteBtn.hidden = !skill.archived;
-  updateGateControls(skill.archived);
+  updateGateControls(skill.archived, skill.status);
 
   const sevClass = severityClass(skill.score);
   els.detailScore.textContent = skill.score ?? "—";
@@ -779,6 +791,9 @@ async function setGateStatus(status) {
     // Re-render the whole detail, not just the badge: the response clears
     // gate_cleared, and the "decision was cleared" notice has to go with it.
     renderDetail(await res.json());
+    // The button that was just clicked is now hidden — move focus to the
+    // control that replaced it rather than dropping it to <body>.
+    if (!els.gateReset.hidden) els.gateReset.focus();
     loadSkills();
   } catch (e) {
     // Record is gone or the backend is down — bail back to a fresh log.
@@ -787,8 +802,10 @@ async function setGateStatus(status) {
   }
 }
 
-// Reset on an archived item: restore it to the log, clear the gate to
-// pending, and re-render this page as an active item (decision buttons back).
+// Reset clears the gate back to pending and hands the decision buttons back.
+// Reachable two ways: on a decided item (change your mind) and on an archived
+// one, where it also restores the item to the log. The un-archive call is a
+// harmless no-op in the first case, so both paths share one handler.
 async function onGateReset() {
   if (currentSkillId == null) return;
   try {
