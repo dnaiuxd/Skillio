@@ -27,7 +27,7 @@ skillspector --version
 The GUI shows "skillspector ready" in the top-right when it can find it,
 "skillspector not found on PATH" otherwise.
 
-If you want the optional LLM semantic pass (the "Use LLM for Review"
+If you want the optional LLM semantic pass (the "Review using LLM"
 switch in the GUI), set a provider. Without one, SkillSpector does not error — it
 quietly skips the semantic analyzers and returns a static-only report, so
 the GUI shows a warning on the detail page when that happens.

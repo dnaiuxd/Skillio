@@ -486,6 +486,12 @@ main {
   .scan-status::before { animation: none; }
 }
 
+.llm-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .llm-toggle {
   display: flex;
   align-items: center;
@@ -495,6 +501,55 @@ main {
   color: var(--ink-soft);
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* 44px hit area, ~18px of visible icon */
+.info-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.info-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.info-btn:hover { color: var(--ink); }
+
+.info-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -6px;
+}
+
+.info-btn[aria-expanded="true"] { color: var(--ink); }
+
+.llm-info {
+  margin: -6px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.llm-info p { margin: 0 0 10px; }
+.llm-info p:last-child { margin-bottom: 0; }
+.llm-info strong { color: var(--ink); }
+
+.llm-info code {
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 /* The real checkbox stays in the DOM (state, keyboard, role=switch); the

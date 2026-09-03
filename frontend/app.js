@@ -14,6 +14,8 @@ const els = {
   scanBtn: document.getElementById("scan-btn"),
   scanStatus: document.getElementById("scan-status"),
   useLlm: document.getElementById("use-llm"),
+  llmInfoBtn: document.getElementById("llm-info-btn"),
+  llmInfo: document.getElementById("llm-info"),
   listView: document.getElementById("list-view"),
   detailView: document.getElementById("detail-view"),
   tabCurrent: document.getElementById("tab-current"),
@@ -758,6 +760,11 @@ async function deleteSkill() {
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
 els.scanInput.addEventListener("input", updateSourceType);
+els.llmInfoBtn.addEventListener("click", () => {
+  const opening = els.llmInfo.hidden;
+  els.llmInfo.hidden = !opening;
+  els.llmInfoBtn.setAttribute("aria-expanded", String(opening));
+});
 els.scanInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") runScan();
 });

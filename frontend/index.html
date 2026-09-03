@@ -65,11 +65,34 @@
         <button type="button" class="file-chip-clear" id="file-clear" aria-label="Remove selected file">&times;</button>
       </div>
 
-      <label class="llm-toggle">
-        <input type="checkbox" id="use-llm" role="switch" />
-        <span class="switch" aria-hidden="true"></span>
-        Use LLM for Review
-      </label>
+      <div class="llm-row">
+        <label class="llm-toggle">
+          <input type="checkbox" id="use-llm" role="switch" />
+          <span class="switch" aria-hidden="true"></span>
+          Review using LLM
+        </label>
+        <button type="button" class="info-btn" id="llm-info-btn" aria-expanded="false" aria-controls="llm-info"
+          aria-label="What does Review using LLM do?">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+            <path d="M12 11.25v4.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <circle cx="12" cy="7.9" r="1.05" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+      <div class="llm-info" id="llm-info" hidden>
+        <p><strong>Off</strong> — static analysis only: about 20 analyzers
+          matching patterns, parsing code and tracing tainted data. Takes
+          seconds, costs nothing.</p>
+        <p><strong>On</strong> — adds 3 semantic analyzers that read the skill
+          and judge whether what it <em>does</em> matches what it <em>says</em>.
+          That's the only thing which catches instructions hidden in
+          <code>SKILL.md</code> prose, since prose has no code signature. Takes
+          30–90s and spends your LLM provider's quota.</p>
+        <p>Needs <code>SKILLSPECTOR_PROVIDER</code> set. Without it the scan
+          quietly falls back to static — the result page will tell you when
+          that happens.</p>
+      </div>
       <button id="scan-btn" class="btn btn-primary">Scan</button>
       <div id="scan-status" class="scan-status" role="status" hidden></div>
       <p class="rail-credit"><span class="heart" aria-hidden="true">♥</span> by dnaiuxd</p>
