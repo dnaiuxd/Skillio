@@ -159,7 +159,12 @@ start. Open **http://localhost:8787**.
   the semantic pass actually ran, and an amber notice appears when
   SkillSpector could only partially inspect the skill — worth reading,
   because "no findings" from a scan that couldn't parse the files is not
-  the same as "clean".
+  the same as "clean". That notice has two tones: a full warning when a
+  file went unread or a parser gave up, and a milder note when every file
+  *was* read and the only gap is a path-like reference it couldn't follow
+  (prose such as `clarity/simplicity` scans as a file path, so that case is
+  usually noise — but it still matters if the skill really does load files
+  the scan never saw).
 - **Gate** — Install / Do Not Install. This is local state for your own
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own

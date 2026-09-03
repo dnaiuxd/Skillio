@@ -318,8 +318,11 @@ const COVERAGE_REASONS = {
 };
 
 // "Nothing found" and "couldn't read it" must not look the same in a security
-// tool. Only warn when files genuinely weren't fully inspected — an ambiguous
-// reference on an otherwise fully-read skill isn't worth the noise.
+// tool — so an incomplete scan always says so. But two very different things
+// land here: a file that was never opened, and a file that was read whole
+// where only a path-like reference out of it couldn't be followed. The second
+// is usually noise (prose such as "clarity/simplicity" scans as a file path),
+// so it gets a milder note rather than the full warning.
 function coverageNotice(report) {
   const ac = (report && report.analysis_completeness) || null;
   if (!ac) return null;
@@ -330,6 +333,25 @@ function coverageNotice(report) {
     partial > 0 || skipped > 0 || (typeof coverage === "number" && coverage < 100);
   if (!shortfall) return null;
 
+  const seen = [];
+  for (const ex of ac.ledger_exceptions || []) {
+    const code = ex.reason_code;
+    if (code && !seen.includes(code)) seen.push(code);
+  }
+
+  // Nothing went unopened, and the only thing that failed was resolving a
+  // reference. Still worth saying — an unresolved reference can be a real
+  // file the scan never saw — but not worth alarming about.
+  if (skipped === 0 && seen.length === 1 && seen[0] === "reference_unresolved") {
+    return (
+      "SkillSpector read every file in this skill. The only gap is that some " +
+      "path-like references couldn't be followed.\nUsually that's nothing — " +
+      'ordinary prose like "clarity/simplicity" looks like a file path to the ' +
+      "scanner.\nIt's worth a second look only if this skill is meant to pull " +
+      "in files that weren't part of the scan."
+    );
+  }
+
   const total = ac.total_components ?? 0;
   const full = ac.fully_inspected_files ?? 0;
   let what;
@@ -337,11 +359,6 @@ function coverageNotice(report) {
   else if (full === 0) what = `couldn't fully read any of its ${total} files`;
   else what = `only fully read ${full} of its ${total} files`;
 
-  const seen = [];
-  for (const ex of ac.ledger_exceptions || []) {
-    const code = ex.reason_code;
-    if (code && !seen.includes(code)) seen.push(code);
-  }
   const reasons = seen.map((c) => COVERAGE_REASONS[c] || humanize(c));
   let why = "";
   if (reasons.length === 1) {
