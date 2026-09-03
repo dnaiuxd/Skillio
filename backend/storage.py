@@ -110,7 +110,9 @@ def upsert_scan(
             UPDATE skills
             SET name = ?, last_scanned = ?, score = ?, verdict = ?,
                 report_json = ?, error = ?, archived = 0,
-                report_fingerprint = ?,
+                -- A failed scan carries no fingerprint; keep the last known
+                -- good one or the next real change would not be detected.
+                report_fingerprint = COALESCE(?, report_fingerprint),
                 status = CASE WHEN ? THEN 'pending' ELSE status END,
                 gate_cleared = CASE WHEN ? THEN 1 ELSE gate_cleared END
             WHERE id = ?

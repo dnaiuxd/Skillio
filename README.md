@@ -114,7 +114,9 @@ start. Open **http://localhost:8787**.
   Then hit Scan. Re-scanning the same source updates its existing row
   rather than duplicating it, so you get a fresh score after a skill's
   code changes. Uploads are streamed to a temp file, scanned, and
-  deleted — only the report is kept.
+  deleted — only the report is kept, and they're identified by a hash of
+  their contents, so two unrelated files both named `skill.zip` stay
+  separate rows instead of overwriting each other.
 - **Log** — every skill you've scanned, sorted by most recent. Score,
   verdict, and gate status at a glance; the score is color-coded
   (green ≤ 20, amber 21–50, red > 50). The **Scanned Skill / Archived**
@@ -126,9 +128,15 @@ start. Open **http://localhost:8787**.
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own
   install scripts if you want it to be enforced.
-- **Archive** — moves a scan out of the current log without losing it;
-  find it under the Archived tab and **Restore** it any time. Re-scanning
-  an archived source brings it back automatically. **Delete permanently**
+  A decision applies to the report you saw, so if a re-scan comes back
+  different — the score, the verdict, or which findings were raised — the
+  gate resets to pending and says so on the detail page. An identical
+  re-scan keeps your decision, so checking for drift costs you nothing.
+- **Archive** — moves a scan out of the current log without losing it.
+  Find it under the Archived tab, where **Restore to Scanned Skill** puts
+  it back with its decision intact, and **Reset** puts it back *and*
+  reopens the gate so you can decide again. Re-scanning an archived
+  source also brings it back automatically. **Delete permanently**
   (archived items only) is the one irreversible action.
 
 ## Notes

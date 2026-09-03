@@ -8,8 +8,8 @@ you approve or reject a skill before installing it.
 Run with:
     uvicorn app:app --reload --port 8787
 
-Requires `skillspector` to be installed and on PATH (see the SkillSpector
-README: git clone + `uv venv` + `make install`).
+Requires `skillspector` to be installed and on PATH:
+    uv tool install git+https://github.com/NVIDIA/skillspector.git
 """
 import hashlib
 import json
@@ -81,7 +81,7 @@ def _skillspector_path() -> Optional[str]:
 def _derive_name(source: str) -> str:
     s = source.rstrip("/")
     for suffix in (".git", ".zip"):
-        if s.endswith(suffix):
+        if s.lower().endswith(suffix):
             s = s[: -len(suffix)]
     return s.split("/")[-1].split("\\")[-1] or s
 
@@ -149,6 +149,8 @@ def _report_fingerprint(report: Optional[dict]) -> Optional[str]:
         for issue in issues:
             if not isinstance(issue, dict):
                 continue
+            # Severity is part of the identity: the same finding escalated
+            # from medium to critical is a report the user must re-review.
             ids.append(
                 str(
                     issue.get("match_fingerprint")
@@ -157,6 +159,8 @@ def _report_fingerprint(report: Optional[dict]) -> Optional[str]:
                     or issue.get("pattern")
                     or ""
                 )
+                + "|"
+                + str(issue.get("severity") or "")
             )
     payload = json.dumps(
         {"score": score, "verdict": verdict, "findings": sorted(ids)},
@@ -189,6 +193,17 @@ def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[st
 
     if verdict is None and isinstance(score, (int, float)):
         verdict = "do_not_install" if score > 50 else "ok"
+
+    # The report is untrusted (a scanned skill can influence it, especially
+    # under --llm). SQLite's INTEGER affinity stores a non-numeric string
+    # verbatim, so coerce here rather than letting one reach the frontend.
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
+        try:
+            score = int(str(score).strip())
+        except (TypeError, ValueError):
+            score = None
+    else:
+        score = int(score)
     return score, verdict
 
 
@@ -288,7 +303,7 @@ async def scan_upload(
         # unrelated files both called "skill.zip" collapse into one row and the
         # second inherits the gate decision made about the first.
         name = _derive_name(filename)
-        source = f"{filename} · upload:{digest.hexdigest()[:16]}"
+        source = f"{filename} · upload:{digest.hexdigest()[:32]}"
 
         try:
             report = _run_scan(tmppath, use_llm)

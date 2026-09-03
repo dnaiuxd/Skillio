@@ -93,7 +93,7 @@ button {
 .topbar-title {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .topbar-title .mark {

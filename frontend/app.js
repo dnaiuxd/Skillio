@@ -248,7 +248,7 @@ function renderSkillList(skills) {
         </button>
       </td>
       <td>
-        <span class="score-badge score-badge--${sevClass}">${s.score ?? "—"}</span>
+        <span class="score-badge score-badge--${sevClass}">${escapeHtml(s.score ?? "—")}</span>
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
       <td>${verdictCell}</td>
@@ -621,8 +621,9 @@ async function setGateStatus(status) {
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const skill = await res.json();
-    renderGateCurrent(skill.status);
+    // Re-render the whole detail, not just the badge: the response clears
+    // gate_cleared, and the "decision was cleared" notice has to go with it.
+    renderDetail(await res.json());
     loadSkills();
   } catch (e) {
     // Record is gone or the backend is down — bail back to a fresh log.
@@ -637,8 +638,8 @@ async function onGateReset() {
   if (currentSkillId == null) return;
   try {
     for (const [path, body] of [
-      [`/skills/${currentSkillId}/archive`, { archived: false }],
       [`/skills/${currentSkillId}/status`, { status: "pending" }],
+      [`/skills/${currentSkillId}/archive`, { archived: false }],
     ]) {
       const res = await fetch(`${API}${path}`, {
         method: "POST",
@@ -650,6 +651,8 @@ async function onGateReset() {
     const res = await fetch(`${API}/skills/${currentSkillId}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     renderDetail(await res.json());
+    // Reset hides itself; don't drop keyboard focus to <body>.
+    els.gateApprove.focus();
     setTab(false);
   } catch (e) {
     showDetailView(false);
@@ -689,6 +692,7 @@ async function deleteSkill() {
     const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (e) {
+    els.detailError.classList.remove("detail-error--warn");
     els.detailError.hidden = false;
     els.detailError.textContent =
       "Could not delete this record — it may have already been removed, or the backend is down. Go back and refresh the log.";
