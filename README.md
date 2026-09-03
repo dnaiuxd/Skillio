@@ -27,15 +27,32 @@ skillspector --version
 The GUI shows "skillspector ready" in the top-right when it can find it,
 "skillspector not found on PATH" otherwise.
 
-If you want the optional LLM semantic pass (the "LLM Review" checkbox in
-the GUI), set a provider. Without one, SkillSpector does not error — it
+If you want the optional LLM semantic pass (the "Use LLM for Review"
+switch in the GUI), set a provider. Without one, SkillSpector does not error — it
 quietly skips the semantic analyzers and returns a static-only report, so
 the GUI shows a warning on the detail page when that happens.
+
+If you already have the Claude Code CLI, the simplest option needs no API
+key at all — `claude_cli` reuses its existing login (it spends that
+subscription's quota rather than a separate API budget):
+
+```bash
+export SKILLSPECTOR_PROVIDER=claude_cli
+```
+
+Otherwise pick a provider and give it a key:
 
 ```bash
 export SKILLSPECTOR_PROVIDER=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+`skillspector scan --help` lists every supported provider. Three analyzers
+turn on with any of them — `semantic_developer_intent`,
+`semantic_quality_policy`, `semantic_security_discovery` — on top of the
+~20 static ones that always run. They judge whether a skill's behaviour
+matches its stated purpose, which matters because a `SKILL.md` is prose
+your agent obeys and malicious instructions there have no code signature.
 
 ## 2. Get the GUI
 
@@ -64,10 +81,25 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.pli
 ```
 
 A launchd agent does **not** inherit your shell environment, so the LLM
-variables exported above are invisible to it. To use LLM Review under the
-background service, add them to the plist's `EnvironmentVariables` dict
-(alongside `PATH`) and `launchctl kickstart -k gui/$(id -u)/com.skillspector.gui`.
-Note that puts the API key in a plaintext file in your home directory.
+variables exported above are invisible to it. Add them to the plist's
+`EnvironmentVariables` dict (alongside `PATH`) — `PlistBuddy` avoids
+hand-editing the XML:
+
+```bash
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:SKILLSPECTOR_PROVIDER string claude_cli" \
+  ~/Library/LaunchAgents/com.skillspector.gui.plist
+```
+
+Then fully reload — `kickstart` alone restarts the process **without**
+re-reading the plist, so a changed environment won't take effect:
+
+```bash
+launchctl bootout gui/$(id -u)/com.skillspector.gui
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.plist
+```
+
+With `claude_cli` there's no secret to store. With a key-based provider,
+note it lands in a plaintext file in your home directory.
 
 The paths inside the plist are absolute — edit them if the repo doesn't
 live at `~/Projects/skills-spector`, or if you rebuild `backend/.venv`.
@@ -123,7 +155,11 @@ start. Open **http://localhost:8787**.
   toggle switches which set you're looking at.
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
-  found, or the source is unreachable).
+  found, or the source is unreachable). An **LLM review** chip appears when
+  the semantic pass actually ran, and an amber notice appears when
+  SkillSpector could only partially inspect the skill — worth reading,
+  because "no findings" from a scan that couldn't parse the files is not
+  the same as "clean".
 - **Gate** — Install / Do Not Install. This is local state for your own
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own

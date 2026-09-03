@@ -27,6 +27,7 @@ const els = {
   deleteBtn: document.getElementById("delete-btn"),
   detailName: document.getElementById("detail-name"),
   detailSource: document.getElementById("detail-source"),
+  scanMeta: document.getElementById("scan-meta"),
   detailScore: document.getElementById("detail-score"),
   detailVerdict: document.getElementById("detail-verdict"),
   scoreMeter: document.getElementById("score-meter"),
@@ -291,6 +292,53 @@ function updateGateControls(archived) {
   els.gateReject.hidden = archived;
 }
 
+// Positive confirmation that the semantic pass ran — without it a successful
+// LLM scan and a static-only one look identical.
+function renderScanMeta(skill) {
+  const meta = (skill.report && skill.report.metadata) || {};
+  const chips = [];
+  if (meta.llm_requested && meta.llm_available) chips.push("LLM review");
+  els.scanMeta.innerHTML = chips
+    .map((c) => `<span class="scan-meta-chip">${escapeHtml(c)}</span>`)
+    .join("");
+  els.scanMeta.hidden = chips.length === 0;
+}
+
+// "Nothing found" and "couldn't read it" must not look the same in a security
+// tool. Only warn when files genuinely weren't fully inspected — an ambiguous
+// reference on an otherwise fully-read skill isn't worth the noise.
+function coverageNotice(report) {
+  const ac = (report && report.analysis_completeness) || null;
+  if (!ac) return null;
+  const partial = ac.partially_inspected_files || 0;
+  const skipped = ac.entirely_uninspected_files || 0;
+  const coverage = ac.coverage_percent;
+  const shortfall =
+    partial > 0 || skipped > 0 || (typeof coverage === "number" && coverage < 100);
+  if (!shortfall) return null;
+
+  const counts = {};
+  for (const ex of ac.ledger_exceptions || []) {
+    const code = ex.reason_code || "unknown";
+    counts[code] = (counts[code] || 0) + 1;
+  }
+  const reasons = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, n]) => `${humanize(code)} (${n})`)
+    .join(", ");
+
+  const total = ac.total_components ?? "?";
+  const full = ac.fully_inspected_files ?? 0;
+  return (
+    `SkillSpector only partially inspected this skill — ${full} of ${total} ` +
+    `components fully read` +
+    (typeof coverage === "number" ? `, ${coverage}% coverage` : "") +
+    (reasons ? `. Blocked by: ${reasons}` : "") +
+    `. Treat a clean result as "nothing found in what could be read", not ` +
+    `"confirmed safe".`
+  );
+}
+
 function renderDetailSource(src) {
   src = src || "";
   els.detailSource.textContent = "";
@@ -409,6 +457,7 @@ async function openDetail(id) {
 function renderDetail(skill) {
   els.detailName.textContent = skill.name;
   renderDetailSource(skill.source);
+  renderScanMeta(skill);
 
   // Active items can be archived; archived items can be restored or purged.
   els.archiveBtn.hidden = skill.archived;
@@ -460,6 +509,8 @@ function renderDetail(skill) {
         "then scan again."
     );
   }
+  const coverage = coverageNotice(skill.report);
+  if (coverage) notices.push(coverage);
   els.detailError.classList.toggle(
     "detail-error--warn",
     !skill.error && notices.length > 0

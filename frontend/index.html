@@ -66,8 +66,9 @@
       </div>
 
       <label class="llm-toggle">
-        <input type="checkbox" id="use-llm" />
-        LLM Review
+        <input type="checkbox" id="use-llm" role="switch" />
+        <span class="switch" aria-hidden="true"></span>
+        Use LLM for Review
       </label>
       <button id="scan-btn" class="btn btn-primary">Scan</button>
       <div id="scan-status" class="scan-status" role="status" hidden></div>
@@ -120,6 +121,7 @@
           <div>
             <h2 id="detail-name"></h2>
             <div id="detail-source" class="detail-source"></div>
+            <div id="scan-meta" class="scan-meta" hidden></div>
           </div>
           <div class="detail-score-block">
             <div id="detail-score" class="detail-score">—</div>
