@@ -160,6 +160,15 @@ start. Open **http://localhost:8787**.
   SkillSpector could only partially inspect the skill — worth reading,
   because "no findings" from a scan that couldn't parse the files is not
   the same as "clean".
+  Three separate things are reported separately, because conflating them
+  is confusing: the **N files scanned** chip is scope (what was looked
+  at), the amber notice is completeness (how fully it was read), and the
+  findings list is results (what was wrong). **Files scanned** at the
+  bottom expands to the full inventory — every file SkillSpector
+  enumerated, the ones with findings first, each marked clean or carrying
+  its worst severity. A clean file never appears in the findings list, so
+  without this there's no way to tell "scanned and fine" from "not
+  scanned".
 - **Gate** — Install / Do Not Install. This is local state for your own
   workflow — a simple record of "I looked at this and decided," not
   something that blocks an install anywhere else. Wire it into your own

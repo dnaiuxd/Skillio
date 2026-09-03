@@ -37,6 +37,9 @@ const els = {
   detailError: document.getElementById("detail-error"),
   findingsList: document.getElementById("findings-list"),
   severityBreakdown: document.getElementById("severity-breakdown"),
+  filesPanel: document.getElementById("files-panel"),
+  filesPanelCount: document.getElementById("files-panel-count"),
+  filesPanelList: document.getElementById("files-panel-list"),
   gateCurrent: document.getElementById("gate-current"),
   gateReset: document.getElementById("gate-reset"),
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
@@ -294,12 +297,23 @@ function updateGateControls(archived) {
   els.gateReject.hidden = archived;
 }
 
-// Positive confirmation that the semantic pass ran — without it a successful
-// LLM scan and a static-only one look identical.
+// Scope of the scan, stated up front: how many files it covered and whether
+// the semantic pass ran. Without the file count a one-file skill and a
+// 300-file repo produce identical-looking reports. This is deliberately a
+// count of files *looked at*, not a verdict — how completely they were read
+// is the coverage notice's job, and what was found in them is the findings
+// list's. Conflating the three is what made "11 files" read as "11 findings".
 function renderScanMeta(skill) {
   const meta = (skill.report && skill.report.metadata) || {};
+  const ac = (skill.report && skill.report.analysis_completeness) || null;
   const chips = [];
+
+  const total = ac && ac.total_components;
+  if (typeof total === "number" && total > 0) {
+    chips.push(`${total} ${total === 1 ? "file" : "files"} scanned`);
+  }
   if (meta.llm_requested && meta.llm_available) chips.push("Review using LLM");
+
   els.scanMeta.innerHTML = chips
     .map((c) => `<span class="scan-meta-chip">${escapeHtml(c)}</span>`)
     .join("");
@@ -553,6 +567,69 @@ function renderDetail(skill) {
   }
 
   renderFindings(skill.report);
+  renderFilesPanel(skill.report);
+}
+
+// The findings list only names files that had a problem, so a clean file is
+// invisible there — which makes "11 files scanned" look like it lost eight of
+// them. This is the inventory: every file SkillSpector enumerated, each marked
+// clean or carrying its worst severity. Collapsed by default; the count is in
+// the summary so it reads without opening.
+function renderFilesPanel(report) {
+  const components = (report && report.components) || null;
+  if (!Array.isArray(components) || components.length === 0) {
+    els.filesPanel.hidden = true;
+    els.filesPanelList.innerHTML = "";
+    return;
+  }
+
+  // Worst severity per file, from the raw issue rows — one file can hold
+  // several findings and we want the most serious one on the badge.
+  const worst = new Map();
+  const counts = new Map();
+  for (const issue of (report && report.issues) || []) {
+    const file = (issue.location || {}).file;
+    if (!file) continue;
+    counts.set(file, (counts.get(file) || 0) + 1);
+    const sev = (issue.severity || "").toLowerCase();
+    const prev = worst.get(file);
+    if (prev === undefined || severityRank(sev) < severityRank(prev)) {
+      worst.set(file, sev);
+    }
+  }
+
+  const rows = components.slice().sort((a, b) => {
+    const ra = worst.has(a.path) ? severityRank(worst.get(a.path)) : 99;
+    const rb = worst.has(b.path) ? severityRank(worst.get(b.path)) : 99;
+    if (ra !== rb) return ra - rb;
+    return String(a.path).localeCompare(String(b.path));
+  });
+
+  const flagged = worst.size;
+  els.filesPanelCount.textContent = flagged
+    ? `${components.length} scanned · ${flagged} with findings`
+    : `${components.length} scanned · all clean`;
+
+  els.filesPanelList.innerHTML = rows
+    .map((c) => {
+      const sev = worst.get(c.path);
+      const n = counts.get(c.path) || 0;
+      const badge = sev
+        ? `<span class="pill ${findingPillClass(sev)}">${n} ${escapeHtml(sev)}</span>`
+        : `<span class="pill pill-ok pill--soft">clean</span>`;
+      const bits = [c.type, typeof c.lines === "number" ? `${c.lines} lines` : null]
+        .filter(Boolean)
+        .join(" · ");
+      return (
+        `<li class="file-row">` +
+        `<span class="file-row-path">${escapeHtml(c.path)}</span>` +
+        `<span class="file-row-meta">${escapeHtml(bits)}</span>` +
+        badge +
+        `</li>`
+      );
+    })
+    .join("");
+  els.filesPanel.hidden = false;
 }
 
 function severityRank(sev) {
