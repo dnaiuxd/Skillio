@@ -1,7 +1,7 @@
 """
 Storage layer for My SkillSpector.
 Persists scanned skills, their latest report, and an approve/reject gate
-status in a local SQLite database (skillspector_gui.db).
+status in a local SQLite database (myskillspector.db).
 """
 import json
 import sqlite3
@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-DB_PATH = Path(__file__).parent / "skillspector_gui.db"
+DB_PATH = Path(__file__).parent / "myskillspector.db"
 
 _SCHEMA = """
     CREATE TABLE IF NOT EXISTS skills (

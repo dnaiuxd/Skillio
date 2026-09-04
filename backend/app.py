@@ -284,7 +284,7 @@ async def scan_upload(
     if not filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip archives can be uploaded")
 
-    tmpdir = tempfile.mkdtemp(prefix="skillspector_gui_")
+    tmpdir = tempfile.mkdtemp(prefix="myskillspector_")
     tmppath = os.path.join(tmpdir, filename)
     try:
         written = 0

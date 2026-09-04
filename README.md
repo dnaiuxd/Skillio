@@ -69,7 +69,7 @@ git clone https://github.com/dnaiuxd/skills-spector.git
 
 ### Run it — one-click (macOS)
 
-Double-click **`SkillSpector.command`** in the repo root. On the first
+Double-click **`My SkillSpector.command`** in the repo root. On the first
 run it creates the Python environment and installs dependencies; after
 that it just starts the server and opens the app in your browser. Close
 the Terminal window it opens to stop the server. Double-clicking it
@@ -83,8 +83,8 @@ launchd agent:
 
 ```bash
 mkdir -p ~/Library/LaunchAgents
-cp macos/com.skillspector.gui.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.plist
+cp macos/com.myskillspector.gui.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.myskillspector.gui.plist
 ```
 
 A launchd agent does **not** inherit your shell environment, so the LLM
@@ -94,15 +94,15 @@ hand-editing the XML:
 
 ```bash
 /usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:SKILLSPECTOR_PROVIDER string claude_cli" \
-  ~/Library/LaunchAgents/com.skillspector.gui.plist
+  ~/Library/LaunchAgents/com.myskillspector.gui.plist
 ```
 
 Then fully reload — `kickstart` alone restarts the process **without**
 re-reading the plist, so a changed environment won't take effect:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.skillspector.gui
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.skillspector.gui.plist
+launchctl bootout gui/$(id -u)/com.myskillspector.gui
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.myskillspector.gui.plist
 ```
 
 With `claude_cli` there's no secret to store. With a key-based provider,
@@ -112,13 +112,13 @@ The paths inside the plist are absolute — edit them if the repo doesn't
 live at `~/Projects/skills-spector`, or if you rebuild `backend/.venv`.
 Run `backend` setup once first (the "manually" steps below, through
 `pip install`) so the venv exists. Logs go to
-`~/Library/Logs/skillspector-gui.log`.
+`~/Library/Logs/myskillspector.log`.
 
 To stop and remove it:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.skillspector.gui
-rm ~/Library/LaunchAgents/com.skillspector.gui.plist
+launchctl bootout gui/$(id -u)/com.myskillspector.gui
+rm ~/Library/LaunchAgents/com.myskillspector.gui.plist
 ```
 
 ### Install it as an app
@@ -206,7 +206,7 @@ start. Open **http://localhost:8787**.
   CDN call): Yellowtail for the wordmark, Montserrat for headings, Open
   Sans for body/UI, system mono for code. Licenses sit next to the files
   (OFL for Montserrat/Open Sans, Apache-2.0 for Yellowtail).
-- Data lives in `backend/skillspector_gui.db` (SQLite, git-ignored) —
+- Data lives in `backend/myskillspector.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - SkillSpector fails closed: a LOW-band result that would normally read
   SAFE is downgraded to CAUTION whenever the scan was degraded or

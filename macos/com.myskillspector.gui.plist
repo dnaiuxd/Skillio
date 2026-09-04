@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.skillspector.gui</string>
+    <string>com.myskillspector.gui</string>
 
     <key>ProgramArguments</key>
     <array>
@@ -34,9 +34,9 @@
     <string>Background</string>
 
     <key>StandardOutPath</key>
-    <string>/Users/dnaiuxd/Library/Logs/skillspector-gui.log</string>
+    <string>/Users/dnaiuxd/Library/Logs/myskillspector.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/dnaiuxd/Library/Logs/skillspector-gui.log</string>
+    <string>/Users/dnaiuxd/Library/Logs/myskillspector.log</string>
 </dict>
 </plist>
