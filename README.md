@@ -195,9 +195,9 @@ start. Open **http://localhost:8787**.
 ## Notes
 
 - Fonts are self-hosted (latin `.woff2` subsets in `frontend/fonts/`, no
-  CDN call): Yellowtail for the wordmark, Montserrat for headings, Open
+  CDN call): Bebas Neue for the wordmark, Montserrat for headings, Open
   Sans for body/UI, system mono for code. Licenses sit next to the files
-  (OFL for Montserrat/Open Sans, Apache-2.0 for Yellowtail).
+  (all three are OFL).
 - Data lives in `backend/myskillspector.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - SkillSpector fails closed: a LOW-band result that would normally read
@@ -229,5 +229,5 @@ Two things it doesn't cover:
   Apache-2.0 that you install yourself; this app invokes it as a
   subprocess. Its licence governs it, not this repo.
 - **The bundled fonts keep their own licences** — see
-  `frontend/fonts/LICENSE-*.txt` (OFL for Montserrat and Open Sans,
-  Apache-2.0 for Yellowtail). MIT covers the code, not the typefaces.
+  `frontend/fonts/LICENSE-*.txt` (OFL for Montserrat, Open Sans,
+  and Bebas Neue). MIT covers the code, not the typefaces.

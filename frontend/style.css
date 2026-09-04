@@ -1,8 +1,8 @@
 /* ---------- Fonts (self-hosted latin subsets — see fonts/LICENSE-*) ---------- */
 
 @font-face {
-  font-family: "Yellowtail";
-  src: url("fonts/yellowtail-latin.woff2") format("woff2");
+  font-family: "Bebas Neue";
+  src: url("fonts/bebas-neue-latin.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -48,7 +48,9 @@
   --mono: ui-monospace, SFMono-Regular, "Roboto Mono", Menlo, Consolas, monospace;
   --font-body: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-heading: "Montserrat", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-display: "Yellowtail", "Snell Roundhand", "Brush Script MT", cursive;
+  /* Bebas Neue has no lowercase glyphs — the fallbacks are condensed faces
+     so the wordmark keeps its proportions while the webfont loads. */
+  --font-display: "Bebas Neue", "Oswald", "Haettenschweiler", "Arial Narrow", sans-serif;
 
   color-scheme: light;
 }
@@ -105,11 +107,14 @@ button {
 
 .topbar-title h1 {
   font-family: var(--font-display);
-  font-size: 30px;
+  font-size: 34px;
   font-weight: 400;
   line-height: 1;
   margin: 0;
-  letter-spacing: 0.02em;
+  /* Bebas is drawn tight; it needs air at display size. text-transform is
+     explicit so the fallback faces match the caps-only webfont. */
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .health {
