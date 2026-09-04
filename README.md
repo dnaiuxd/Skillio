@@ -219,3 +219,16 @@ start. Open **http://localhost:8787**.
   but will feel slow on a big repo with the LLM pass on. If that becomes
   a problem, the natural next step is a background job queue instead of a
   blocking POST.
+
+## License
+
+[MIT](LICENSE) — do what you like with it, keep the copyright notice.
+
+Two things it doesn't cover:
+
+- **SkillSpector is not bundled here.** It's a separate NVIDIA tool under
+  Apache-2.0 that you install yourself; this app invokes it as a
+  subprocess. Its licence governs it, not this repo.
+- **The bundled fonts keep their own licences** — see
+  `frontend/fonts/LICENSE-*.txt` (OFL for Montserrat and Open Sans,
+  Apache-2.0 for Yellowtail). MIT covers the code, not the typefaces.
