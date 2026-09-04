@@ -1,4 +1,4 @@
-# SkillSpector GUI
+# My SkillSpector
 
 A local dashboard for [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector):
 scan an agent skill, browse a history of everything you've scanned, and
@@ -7,6 +7,13 @@ approve or reject each one before you install it.
 It's a thin wrapper — all the actual security analysis is done by the
 `skillspector` CLI. This app just gives you a browsable log instead of
 reading terminal output every time.
+
+> **Not affiliated with NVIDIA.** My SkillSpector is an independent,
+> unofficial front-end. **SkillSpector** is NVIDIA's tool, distributed
+> separately under Apache-2.0 and installed by you — it is not bundled,
+> modified, or redistributed here. Every security finding you see comes
+> from it, not from this app. Names and trademarks belong to their
+> respective owners.
 
 ## 1. Install SkillSpector itself (one-time)
 

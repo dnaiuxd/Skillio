@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Double-click this file in Finder to start the SkillSpector GUI.
+# Double-click this file in Finder to start My SkillSpector.
 # It sets up the Python environment on first run, starts the server,
 # and opens the app in your browser.
 #
@@ -16,7 +16,7 @@ URL="http://localhost:$PORT"
 
 # Already running? Just open it.
 if curl -fs -o /dev/null --max-time 2 "$URL/api/health"; then
-  echo "SkillSpector GUI is already running — opening $URL"
+  echo "My SkillSpector is already running — opening $URL"
   open "$URL"
   exit 0
 fi
@@ -42,7 +42,7 @@ fi
 ) &
 
 echo
-echo "SkillSpector GUI running at $URL"
+echo "My SkillSpector running at $URL"
 echo "Close this window (or press Ctrl-C) to stop it."
 echo
 

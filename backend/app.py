@@ -1,5 +1,5 @@
 """
-SkillSpector GUI backend.
+My SkillSpector backend.
 
 Wraps the `skillspector` CLI (https://github.com/NVIDIA/SkillSpector) with a
 small FastAPI service: run scans, keep a history of scanned skills, and let
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SkillSpector GUI", lifespan=lifespan)
+app = FastAPI(title="My SkillSpector", lifespan=lifespan)
 
 # The frontend is served from this same app (same origin), so CORS isn't
 # needed for normal use. Scope it to localhost only — a wildcard would let

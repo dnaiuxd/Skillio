@@ -1,5 +1,5 @@
 """
-Storage layer for SkillSpector GUI.
+Storage layer for My SkillSpector.
 Persists scanned skills, their latest report, and an approve/reject gate
 status in a local SQLite database (skillspector_gui.db).
 """
