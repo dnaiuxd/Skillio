@@ -78,47 +78,39 @@ again while it's already running simply reopens the tab.
 ### Run it — always (background service, macOS)
 
 To have `http://localhost:8787` up permanently — started at login,
-restarted if it crashes, surviving reboots — install the bundled
-launchd agent:
+restarted if it crashes, surviving reboots:
 
 ```bash
-mkdir -p ~/Library/LaunchAgents
-cp macos/com.myskillspector.gui.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.myskillspector.gui.plist
+SKILLSPECTOR_PROVIDER=claude_cli ./macos/install-service.sh
 ```
 
-A launchd agent does **not** inherit your shell environment, so the LLM
-variables exported above are invisible to it. Add them to the plist's
-`EnvironmentVariables` dict (alongside `PATH`) — `PlistBuddy` avoids
-hand-editing the XML:
+The script writes the launchd agent from wherever the repo actually
+lives, so there are no paths to hand-edit. It finds `skillspector` on
+your PATH and puts its directory into the agent's environment, since a
+launchd job inherits nothing from your shell. Add `--dry-run` to see the
+plist it would write without installing anything.
 
-```bash
-/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:SKILLSPECTOR_PROVIDER string claude_cli" \
-  ~/Library/LaunchAgents/com.myskillspector.gui.plist
-```
+`SKILLSPECTOR_PROVIDER` matters: a launchd agent can't see the variable
+you exported in a terminal, and without it in the plist the scan silently
+falls back to static-only. Set it on the command line as above, and on
+later re-runs the script carries it forward from your previous install
+so a reinstall can't quietly disable the semantic analyzers. With
+`claude_cli` there's no secret to store; a key-based provider lands in a
+plaintext file in your home directory.
 
-Then fully reload — `kickstart` alone restarts the process **without**
-re-reading the plist, so a changed environment won't take effect:
-
-```bash
-launchctl bootout gui/$(id -u)/com.myskillspector.gui
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.myskillspector.gui.plist
-```
-
-With `claude_cli` there's no secret to store. With a key-based provider,
-note it lands in a plaintext file in your home directory.
-
-The paths inside the plist are absolute — edit them if the repo doesn't
-live at `~/Projects/skills-spector`, or if you rebuild `backend/.venv`.
 Run `backend` setup once first (the "manually" steps below, through
-`pip install`) so the venv exists. Logs go to
-`~/Library/Logs/myskillspector.log`.
+`pip install`) so the venv exists — the script checks and tells you if
+it's missing. Logs go to `~/Library/Logs/myskillspector.log`.
 
-To stop and remove it:
+Re-run the same command any time to pick up changes; it reloads with
+`bootout` + `bootstrap` rather than `kickstart`, which restarts the
+process **without** re-reading the plist and would silently ignore a
+changed provider.
+
+To stop and remove it (your scan log is untouched):
 
 ```bash
-launchctl bootout gui/$(id -u)/com.myskillspector.gui
-rm ~/Library/LaunchAgents/com.myskillspector.gui.plist
+./macos/install-service.sh --uninstall
 ```
 
 ### Install it as an app
