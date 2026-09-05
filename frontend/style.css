@@ -55,29 +55,30 @@
   color-scheme: light;
 
   /* --- Dark values ------------------------------------------------------
-     Defined once here, switched on by the two selectors below. Only a
-     whisper of warmth — enough that it isn't a cold neutral grey, low
-     enough that it doesn't read as brown. Every
-     pairing the CSS actually uses was checked against WCAG 2.2 AA: text
-     >= 4.5:1, control boundaries >= 3:1. The status colours are NOT the
-     light ones reused — those are dark by design and would fail on a dark
-     ground, so each has a lighter counterpart at equivalent contrast. */
-  --d-bg: #121110;
-  --d-surface: #1c1b19;
-  /* True black, so the topbar reads as a distinct band above the page
-     rather than blending into it. */
+     GitHub Primer's dark palette, token for token — cool near-black
+     surfaces rather than warm ones. Defined once here, switched on by the
+     two selectors below. Every pairing the CSS actually uses was checked
+     against WCAG 2.2 AA: text >= 4.5:1, control boundaries >= 3:1. Status
+     colours are Primer's own, not the light theme's reused — those are
+     dark by design and would fail on a dark ground. */
+  --d-bg: #0d1117;             /* canvas.default */
+  --d-surface: #161b22;        /* canvas.subtle  */
+  /* True black, so the topbar reads as a distinct band above the page.
+     Primer's own header is #010409, a hair off this. */
   --d-topbar-bg: #000000;
-  --d-rail-bg: #161514;
-  --d-rail-border: #2b2926;
-  --d-ink: #f3f1ed;
-  --d-ink-soft: #a9a59d;
-  --d-line: #2f2d2a;
-  --d-line-strong: #46433e;
-  --d-line-control: #847f76;
-  --d-critical: #f08d7c;
-  --d-medium: #e0b352;
-  --d-ok: #78c497;
-  --d-pending: #a8a49c;
+  --d-rail-bg: #010409;        /* canvas.inset — the rail reads recessed */
+  --d-rail-border: #21262d;    /* border.muted   */
+  --d-ink: #e6edf3;            /* fg.default     */
+  --d-ink-soft: #8b949e;       /* fg.muted       */
+  --d-line: #21262d;           /* border.muted   */
+  --d-line-strong: #30363d;    /* border.default */
+  /* Primer uses border.default on inputs too, which lands near 1.4:1.
+     This is a step lighter so form controls clear WCAG 1.4.11. */
+  --d-line-control: #6e7681;
+  --d-critical: #f85149;       /* danger.fg      */
+  --d-medium: #d29922;         /* attention.fg   */
+  --d-ok: #3fb950;             /* success.fg     */
+  --d-pending: #8b949e;        /* fg.muted       */
 }
 
 /* Applied in two places because CSS can't share one rule across a media
