@@ -63,7 +63,9 @@
      ground, so each has a lighter counterpart at equivalent contrast. */
   --d-bg: #17130e;
   --d-surface: #221d16;
-  --d-topbar-bg: #221d16;
+  /* True black, so the topbar reads as a distinct band above the page
+     rather than blending into it. */
+  --d-topbar-bg: #000000;
   --d-rail-bg: #1c1812;
   --d-rail-border: #312a21;
   --d-ink: #f5efe4;
@@ -161,15 +163,27 @@ button {
   display: flex;
   align-items: center;
   margin: 0;
-  /* Black paths in the SVG are currentColor; the brand green is not, so it
-     survives the theme switch instead of inverting to magenta. */
-  color: var(--ink);
 }
 
+/* Two files rather than one recoloured with currentColor: the dark artwork
+   is genuinely different, not the light one inverted — it carries nine green
+   paths against the light version's one. Only one is ever displayed. */
 .topbar-title .logo {
   display: block;
   width: auto;
   height: 40px;
+}
+
+/* Specificity has to match .topbar-title .logo above, or `display: block`
+   there wins and both logos render at once. */
+.topbar-title .logo--dark { display: none; }
+
+:root[data-theme="dark"] .logo--light { display: none; }
+:root[data-theme="dark"] .logo--dark { display: block; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo--light { display: none; }
+  :root:not([data-theme="light"]) .logo--dark { display: block; }
 }
 
 .visually-hidden {
