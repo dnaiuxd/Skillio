@@ -360,10 +360,23 @@ main {
   color: var(--ink-soft);
 }
 
-.rail-credit .heart,
-.page-footer .heart {
-  font-size: 1.6em;
-  line-height: 1;
+/* Underlined so it doesn't rely on colour alone to read as a link, and
+   given a real focus ring since it's the last stop in the tab order. */
+.credit-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.credit-link:hover {
+  color: var(--ink);
+  text-decoration-thickness: 2px;
+}
+
+.credit-link:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 .rail-credit {
