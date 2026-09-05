@@ -55,28 +55,29 @@
   color-scheme: light;
 
   /* --- Dark values ------------------------------------------------------
-     Defined once here, switched on by the two selectors below. Warm rather
-     than neutral, so the cream character survives the inversion. Every
+     Defined once here, switched on by the two selectors below. Only a
+     whisper of warmth — enough that it isn't a cold neutral grey, low
+     enough that it doesn't read as brown. Every
      pairing the CSS actually uses was checked against WCAG 2.2 AA: text
      >= 4.5:1, control boundaries >= 3:1. The status colours are NOT the
      light ones reused — those are dark by design and would fail on a dark
      ground, so each has a lighter counterpart at equivalent contrast. */
-  --d-bg: #17130e;
-  --d-surface: #221d16;
+  --d-bg: #121110;
+  --d-surface: #1c1b19;
   /* True black, so the topbar reads as a distinct band above the page
      rather than blending into it. */
   --d-topbar-bg: #000000;
-  --d-rail-bg: #1c1812;
-  --d-rail-border: #312a21;
-  --d-ink: #f5efe4;
-  --d-ink-soft: #b3a996;
-  --d-line: #372f25;
-  --d-line-strong: #4e4336;
-  --d-line-control: #8d7853;
+  --d-rail-bg: #161514;
+  --d-rail-border: #2b2926;
+  --d-ink: #f3f1ed;
+  --d-ink-soft: #a9a59d;
+  --d-line: #2f2d2a;
+  --d-line-strong: #46433e;
+  --d-line-control: #847f76;
   --d-critical: #f08d7c;
   --d-medium: #e0b352;
   --d-ok: #78c497;
-  --d-pending: #aaa090;
+  --d-pending: #a8a49c;
 }
 
 /* Applied in two places because CSS can't share one rule across a media
