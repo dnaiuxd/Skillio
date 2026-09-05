@@ -227,6 +227,27 @@ start. Open **http://localhost:8787**.
   a problem, the natural next step is a background job queue instead of a
   blocking POST.
 
+## Tests
+
+```bash
+./run-tests.sh
+```
+
+Stdlib `unittest` for the backend and a dependency-free Node script for
+the frontend — nothing to install beyond the venv you already made.
+
+They cover the pure functions, which is where every bug this app has
+shipped actually lived: report parsing (`_extract_score_and_verdict`),
+the gate fingerprint that decides whether a re-scan invalidates your
+decision (`_report_fingerprint`), the risk band (`severityBand`), the
+incomplete-scan notice (`coverageNotice`), and severity counting. No
+network, no database, no `skillspector` binary — the whole suite runs in
+well under a second.
+
+`frontend/tests/run.js` loads `app.js` behind a small DOM stub rather
+than copying functions out of it, so renaming something in the app fails
+the suite instead of silently testing a stale copy.
+
 ## License
 
 [MIT](LICENSE) — do what you like with it, keep the copyright notice.
