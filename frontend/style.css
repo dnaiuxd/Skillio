@@ -361,17 +361,20 @@ main {
   color: var(--ink-soft);
 }
 
-/* Underlined so it doesn't rely on colour alone to read as a link, and
-   given a real focus ring since it's the last stop in the tab order. */
+/* Underline on hover only. Safe here where it wouldn't be inside prose:
+   the link is the entire content of its line, so there's no surrounding
+   text it could be confused with (WCAG 1.4.1 is about telling a link
+   apart from the text around it). The focus ring below still marks it
+   for keyboard users, who never see :hover. */
 .credit-link {
   color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
 }
 
 .credit-link:hover {
   color: var(--ink);
-  text-decoration-thickness: 2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .credit-link:focus-visible {
