@@ -52,10 +52,6 @@
      so the wordmark keeps its proportions while the webfont loads. */
   --font-display: "Bebas Neue", "Oswald", "Haettenschweiler", "Arial Narrow", sans-serif;
 
-  /* The mark is a black-on-transparent SVG loaded as <img>, so it can't take
-     currentColor. Inverting is exact here: pure black becomes pure white. */
-  --mark-filter: none;
-
   color-scheme: light;
 
   /* --- Dark values ------------------------------------------------------
@@ -100,7 +96,6 @@
     --medium: var(--d-medium);
     --ok: var(--d-ok);
     --pending: var(--d-pending);
-    --mark-filter: invert(1);
     color-scheme: dark;
   }
 }
@@ -120,7 +115,6 @@
   --medium: var(--d-medium);
   --ok: var(--d-ok);
   --pending: var(--d-pending);
-  --mark-filter: invert(1);
   color-scheme: dark;
 }
 
@@ -161,39 +155,42 @@ button {
   gap: 6px 24px;
 }
 
+/* The logo is a lockup — mark plus wordmark — so the <h1> holds it directly
+   and carries its accessible name in visually hidden text. */
 .topbar-title {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.topbar-title .mark {
-  width: 40px;
-  height: 40px;
-  display: block;
-  flex-shrink: 0;
-  filter: var(--mark-filter);
-}
-
-.topbar-title h1 {
-  font-family: var(--font-display);
-  font-size: 34px;
-  font-weight: 400;
-  line-height: 1;
   margin: 0;
-  /* text-transform is explicit so the fallback faces match the caps-only
-     webfont instead of flashing mixed case while it loads. */
-  text-transform: uppercase;
+  /* Black paths in the SVG are currentColor; the brand green is not, so it
+     survives the theme switch instead of inverting to magenta. */
+  color: var(--ink);
 }
 
-/* Full-width flex item, so it wraps onto its own line under the row above
-   rather than sitting beside the wordmark. */
+.topbar-title .logo {
+  display: block;
+  width: auto;
+  height: 40px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Lives in the left rail above the scan form, not the topbar. */
 .health {
-  flex: 1 0 100%;
-  text-align: right;
   font-size: 13px;
+  line-height: 1.4;
   color: var(--ink-soft);
   font-family: var(--mono);
+  overflow-wrap: anywhere;
 }
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Install (or reinstall) My SkillSpector as a launchd background service.
+# Install (or reinstall) Skillio as a launchd background service.
 #
 #   ./macos/install-service.sh              install or upgrade
 #   ./macos/install-service.sh --dry-run    show the plist, change nothing
@@ -10,14 +10,14 @@
 # into a checked-in plist, so this works from wherever the repo lives.
 set -euo pipefail
 
-LABEL="com.myskillspector.gui"
+LABEL="com.skillio.gui"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 REAL_PLIST="$PLIST"
-LOG="$HOME/Library/Logs/myskillspector.log"
+LOG="$HOME/Library/Logs/skillio.log"
 PORT=8787
 # Labels used by older versions. Booted out on install so a rename can't
 # leave a second copy of the server running against the same port.
-LEGACY_LABELS=("com.skillspector.gui")
+LEGACY_LABELS=("com.myskillspector.gui" "com.skillspector.gui")
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOMAIN="gui/$(id -u)"
@@ -36,17 +36,17 @@ if [ "${1:-}" = "--uninstall" ]; then
   for legacy in "${LEGACY_LABELS[@]}"; do bootout_if_loaded "$legacy"; done
   rm -f "$PLIST"
   say "Removed $LABEL."
-  say "Your scan log is untouched at $REPO/backend/myskillspector.db"
+  say "Your scan log is untouched at $REPO/backend/skillio.db"
   exit 0
 fi
 
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then
   DRY_RUN=1
-  PLIST="$(mktemp -t myskillspector-plist)"
+  PLIST="$(mktemp -t skillio-plist)"
   printf '\nDry run — generating the plist only, nothing will be installed\n\n'
 else
-  printf '\nInstalling My SkillSpector service\n\n'
+  printf '\nInstalling Skillio service\n\n'
 fi
 
 # --- preflight -------------------------------------------------------------
@@ -102,11 +102,17 @@ else
 fi
 
 # --- carry the log across a rename ----------------------------------------
-OLD_DB="$REPO/backend/skillspector_gui.db"
-NEW_DB="$REPO/backend/myskillspector.db"
-if [ "$DRY_RUN" -eq 0 ] && [ -f "$OLD_DB" ] && [ ! -f "$NEW_DB" ]; then
-  mv "$OLD_DB" "$NEW_DB"
-  say "Moved your existing scan log to myskillspector.db"
+# Newest first: if several old databases are lying around, the most recent
+# naming wins rather than resurrecting a stale one.
+NEW_DB="$REPO/backend/skillio.db"
+if [ "$DRY_RUN" -eq 0 ] && [ ! -f "$NEW_DB" ]; then
+  for old in myskillspector.db skillspector_gui.db; do
+    if [ -f "$REPO/backend/$old" ]; then
+      mv "$REPO/backend/$old" "$NEW_DB"
+      say "Moved your existing scan log ($old) to skillio.db"
+      break
+    fi
+  done
 fi
 
 # --- write the plist -------------------------------------------------------

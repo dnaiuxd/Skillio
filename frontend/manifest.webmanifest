@@ -1,6 +1,6 @@
 {
-  "name": "My SkillSpector",
-  "short_name": "My SkillSpector",
+  "name": "Skillio",
+  "short_name": "Skillio",
   "description": "Scan agent skills and keep a browsable log before you install them.",
   "start_url": "/",
   "scope": "/",

@@ -1,4 +1,4 @@
-# My SkillSpector
+# Skillio
 
 A local dashboard for [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector):
 scan an agent skill, browse a history of everything you've scanned, and
@@ -8,7 +8,7 @@ It's a thin wrapper — all the actual security analysis is done by the
 `skillspector` CLI. This app just gives you a browsable log instead of
 reading terminal output every time.
 
-> **Not affiliated with NVIDIA.** My SkillSpector is an independent,
+> **Not affiliated with NVIDIA.** Skillio is an independent,
 > unofficial front-end. **SkillSpector** is NVIDIA's tool, distributed
 > separately under Apache-2.0 and installed by you — it is not bundled,
 > modified, or redistributed here. Every security finding you see comes
@@ -69,7 +69,7 @@ git clone https://github.com/dnaiuxd/skills-spector.git
 
 ### Run it — one-click (macOS)
 
-Double-click **`My SkillSpector.command`** in the repo root. On the first
+Double-click **`Skillio.command`** in the repo root. On the first
 run it creates the Python environment and installs dependencies; after
 that it just starts the server and opens the app in your browser. Close
 the Terminal window it opens to stop the server. Double-clicking it
@@ -100,7 +100,7 @@ plaintext file in your home directory.
 
 Run `backend` setup once first (the "manually" steps below, through
 `pip install`) so the venv exists — the script checks and tells you if
-it's missing. Logs go to `~/Library/Logs/myskillspector.log`.
+it's missing. Logs go to `~/Library/Logs/skillio.log`.
 
 Re-run the same command any time to pick up changes; it reloads with
 `bootout` + `bootstrap` rather than `kickstart`, which restarts the
@@ -198,7 +198,7 @@ start. Open **http://localhost:8787**.
   CDN call): Bebas Neue for the wordmark, Montserrat for headings, Open
   Sans for body/UI, system mono for code. Licenses sit next to the files
   (all three are OFL).
-- Data lives in `backend/myskillspector.db` (SQLite, git-ignored) —
+- Data lives in `backend/skillio.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - **Dark theme** follows your OS by default; the sun/moon switch in the
   top-right overrides it either way and the choice is remembered. The dark palette

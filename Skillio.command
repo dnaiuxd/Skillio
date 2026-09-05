@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Double-click this file in Finder to start My SkillSpector.
+# Double-click this file in Finder to start Skillio.
 # It sets up the Python environment on first run, starts the server,
 # and opens the app in your browser.
 #
@@ -16,7 +16,7 @@ URL="http://localhost:$PORT"
 
 # Already running? Just open it.
 if curl -fs -o /dev/null --max-time 2 "$URL/api/health"; then
-  echo "My SkillSpector is already running — opening $URL"
+  echo "Skillio is already running — opening $URL"
   open "$URL"
   exit 0
 fi
@@ -42,7 +42,7 @@ fi
 ) &
 
 echo
-echo "My SkillSpector running at $URL"
+echo "Skillio running at $URL"
 echo "Close this window (or press Ctrl-C) to stop it."
 echo
 

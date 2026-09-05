@@ -1,5 +1,5 @@
 """
-My SkillSpector backend.
+Skillio backend.
 
 Wraps the `skillspector` CLI (https://github.com/NVIDIA/SkillSpector) with a
 small FastAPI service: run scans, keep a history of scanned skills, and let
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="My SkillSpector", lifespan=lifespan)
+app = FastAPI(title="Skillio", lifespan=lifespan)
 
 # The frontend is served from this same app (same origin), so CORS isn't
 # needed for normal use. Scope it to localhost only — a wildcard would let
@@ -284,7 +284,7 @@ async def scan_upload(
     if not filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip archives can be uploaded")
 
-    tmpdir = tempfile.mkdtemp(prefix="myskillspector_")
+    tmpdir = tempfile.mkdtemp(prefix="skillio_")
     tmppath = os.path.join(tmpdir, filename)
     try:
         written = 0
