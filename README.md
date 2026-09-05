@@ -200,11 +200,12 @@ start. Open **http://localhost:8787**.
   (all three are OFL).
 - Data lives in `backend/skillio.db` (SQLite, git-ignored) —
   delete it to reset the log.
-- **Dark theme** follows your OS by default; the sun/moon switch in the
-  top-right overrides it either way and the choice is remembered. The dark palette is
-  GitHub Primer's, token for token — `canvas.default` #0d1117,
-  `canvas.subtle` #161b22, `fg.default` #e6edf3, `fg.muted` #8b949e — and
-  its status colours too, rather than the light theme's reused — those are dark by design and would fail contrast on a dark
+- **Theme** follows your OS by default; the sun/moon switch in the
+  top-right overrides it either way and the choice is remembered. Both
+  palettes are GitHub Primer's, token for token — light `canvas.default`
+  #ffffff / `canvas.subtle` #f6f8fa / `fg.default` #1f2328, dark #0d1117
+  / #161b22 / #e6edf3 — with `accent.fg` on links and Primer's own status
+  colours per theme rather than one set reused across both — those are dark by design and would fail contrast on a dark
   ground. Every pairing the CSS actually uses was checked against WCAG
   2.2 AA (text ≥ 4.5:1, control boundaries ≥ 3:1).
 - SkillSpector fails closed: a LOW-band result that would normally read
