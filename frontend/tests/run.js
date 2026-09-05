@@ -48,6 +48,9 @@ const sandbox = {
   // reach the network or leave the process with a pending handle.
   fetch: () => new Promise(() => {}),
   matchMedia: () => ({ matches: false, addEventListener() {} }),
+  // topbarColor() reads --topbar-bg off the root to keep the PWA title bar
+  // in step with the header; returning "" exercises its fallback.
+  getComputedStyle: () => ({ getPropertyValue: () => "" }),
   addEventListener() {},
   setTimeout,
   clearTimeout,
