@@ -9,6 +9,15 @@
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#fcf8f2" />
+  <script>
+    // Runs before first paint: without it a stored dark choice renders the
+    // light theme for a frame and then flips. try/catch because reading
+    // localStorage throws outright in some privacy configurations.
+    try {
+      var t = localStorage.getItem("theme");
+      if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <link rel="preload" href="fonts/open-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/montserrat-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/bebas-neue-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -23,7 +32,21 @@
         <img class="mark" src="mark.svg" alt="" />
         <h1>My SkillSpector</h1>
       </div>
-      <div id="health" class="health">checking installation…</div>
+      <div class="topbar-right">
+        <div id="health" class="health">checking installation…</div>
+        <button type="button" class="theme-btn" id="theme-btn" aria-pressed="false"
+          aria-label="Switch to dark theme">
+          <svg class="theme-icon theme-icon--moon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" stroke="currentColor"
+              stroke-width="1.6" stroke-linejoin="round" />
+          </svg>
+          <svg class="theme-icon theme-icon--sun" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 

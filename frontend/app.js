@@ -44,7 +44,43 @@ const els = {
   gateReset: document.getElementById("gate-reset"),
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
+  themeBtn: document.getElementById("theme-btn"),
+  themeColor: document.querySelector('meta[name="theme-color"]'),
 };
+
+// --- theme -----------------------------------------------------------------
+// No stored value means "follow the OS", which is the default state — the
+// media query in the stylesheet handles it and nothing is stamped on <html>.
+// Clicking commits an explicit choice that then outranks the OS.
+const THEME_BG = { light: "#fcf8f2", dark: "#221d16" };
+
+function effectiveTheme() {
+  const set = document.documentElement.dataset.theme;
+  if (set === "dark" || set === "light") return set;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function syncThemeButton() {
+  const dark = effectiveTheme() === "dark";
+  els.themeBtn.setAttribute("aria-pressed", String(dark));
+  els.themeBtn.setAttribute(
+    "aria-label",
+    dark ? "Switch to light theme" : "Switch to dark theme"
+  );
+  // Keeps the browser chrome (and the installed app's title bar) in step.
+  if (els.themeColor) els.themeColor.setAttribute("content", THEME_BG[dark ? "dark" : "light"]);
+}
+
+function toggleTheme() {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try {
+    localStorage.setItem("theme", next);
+  } catch (e) {
+    // Storage unavailable — the choice still applies for this page view.
+  }
+  syncThemeButton();
+}
 
 // SkillSpector defines exactly these four (_SEVERITY_POINTS / _SEVERITY_RANK
 // in nodes/report.py). There is no INFO level — a fifth row here was always
@@ -945,6 +981,16 @@ els.gateReset.addEventListener("click", onGateReset);
 document.querySelectorAll(".gate-btn[data-status]").forEach((btn) => {
   btn.addEventListener("click", () => setGateStatus(btn.dataset.status));
 });
+
+// --- theme ---
+els.themeBtn.addEventListener("click", toggleTheme);
+syncThemeButton();
+// While no explicit choice is stored, follow the OS if it changes mid-session.
+window
+  .matchMedia("(prefers-color-scheme: dark)")
+  .addEventListener("change", () => {
+    if (!document.documentElement.dataset.theme) syncThemeButton();
+  });
 
 // --- log / archived tabs ---
 els.tabCurrent.addEventListener("click", () => setTab(false));

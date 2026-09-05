@@ -200,6 +200,13 @@ start. Open **http://localhost:8787**.
   (all three are OFL).
 - Data lives in `backend/myskillspector.db` (SQLite, git-ignored) —
   delete it to reset the log.
+- **Dark theme** follows your OS by default; the button in the top-right
+  overrides it either way and the choice is remembered. The dark palette
+  is warm rather than neutral grey, so the cream character survives, and
+  the status colours are separate values rather than the light ones
+  reused — those are dark by design and would fail contrast on a dark
+  ground. Every pairing the CSS actually uses was checked against WCAG
+  2.2 AA (text ≥ 4.5:1, control boundaries ≥ 3:1).
 - SkillSpector fails closed: a LOW-band result that would normally read
   SAFE is downgraded to CAUTION whenever the scan was degraded or
   incomplete. That's why a skill can score 0 and still say Caution — the
