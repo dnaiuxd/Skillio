@@ -52,7 +52,16 @@ const els = {
 // No stored value means "follow the OS", which is the default state — the
 // media query in the stylesheet handles it and nothing is stamped on <html>.
 // Clicking commits an explicit choice that then outranks the OS.
-const THEME_BG = { light: "#fcf8f2", dark: "#221d16" };
+// Read the token rather than keeping a copy of it. An installed PWA paints
+// its title bar with theme-color, so a hardcoded value that drifts from
+// --topbar-bg splits the header into two colours — which is exactly what a
+// stale #221d16 did after the palette moved to Primer.
+function topbarColor() {
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue("--topbar-bg")
+    .trim();
+  return v || "#fcf8f2";
+}
 
 function effectiveTheme() {
   const set = document.documentElement.dataset.theme;
@@ -66,7 +75,7 @@ function syncThemeButton() {
   // stable noun ("Dark theme") rather than flipping between two verbs.
   els.themeBtn.setAttribute("aria-checked", String(dark));
   // Keeps the browser chrome (and the installed app's title bar) in step.
-  if (els.themeColor) els.themeColor.setAttribute("content", THEME_BG[dark ? "dark" : "light"]);
+  if (els.themeColor) els.themeColor.setAttribute("content", topbarColor());
 }
 
 function toggleTheme() {
