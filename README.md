@@ -200,8 +200,8 @@ start. Open **http://localhost:8787**.
   (all three are OFL).
 - Data lives in `backend/myskillspector.db` (SQLite, git-ignored) —
   delete it to reset the log.
-- **Dark theme** follows your OS by default; the button in the top-right
-  overrides it either way and the choice is remembered. The dark palette
+- **Dark theme** follows your OS by default; the sun/moon switch in the
+  top-right overrides it either way and the choice is remembered. The dark palette
   is warm rather than neutral grey, so the cream character survives, and
   the status colours are separate values rather than the light ones
   reused — those are dark by design and would fail contrast on a dark

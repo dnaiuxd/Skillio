@@ -186,56 +186,83 @@ button {
   text-transform: uppercase;
 }
 
-.topbar-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
+/* Full-width flex item, so it wraps onto its own line under the row above
+   rather than sitting beside the wordmark. */
 .health {
+  flex: 1 0 100%;
   text-align: right;
   font-size: 13px;
   color: var(--ink-soft);
   font-family: var(--mono);
 }
 
-/* 44px hit area (WCAG 2.5.8) with a 20px icon inside it. */
-.theme-btn {
+/* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
+   visible track stays 52x28. */
+.theme-switch {
+  margin-left: auto;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+}
+
+.theme-switch-track {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 28px;
   border: 1px solid var(--line-control);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--ink);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.theme-btn:hover { border-color: var(--ink); }
+.theme-switch:hover .theme-switch-track { border-color: var(--ink); }
 
-.theme-btn:focus-visible {
+.theme-switch:focus-visible .theme-switch-track {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
-.theme-icon {
-  width: 20px;
-  height: 20px;
+/* The icon rides on the thumb: a switch reports its current state, so the
+   sun shows in light mode and the moon in dark — not the destination. */
+.theme-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--surface);
+  transition: transform 0.18s ease;
 }
 
-/* Show the destination, not the current state: a moon in light mode means
-   "go dark". Only one is ever in the accessibility tree. */
-.theme-icon--sun { display: none; }
-:root[data-theme="dark"] .theme-icon--sun { display: block; }
-:root[data-theme="dark"] .theme-icon--moon { display: none; }
+.theme-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.theme-icon--moon { display: none; }
+
+:root[data-theme="dark"] .theme-switch-knob { transform: translateX(24px); }
+:root[data-theme="dark"] .theme-icon--sun { display: none; }
+:root[data-theme="dark"] .theme-icon--moon { display: block; }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .theme-icon--sun { display: block; }
-  :root:not([data-theme="light"]) .theme-icon--moon { display: none; }
+  :root:not([data-theme="light"]) .theme-switch-knob { transform: translateX(24px); }
+  :root:not([data-theme="light"]) .theme-icon--sun { display: none; }
+  :root:not([data-theme="light"]) .theme-icon--moon { display: block; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-track,
+  .theme-switch-knob { transition: none; }
 }
 
 .health.ok { color: var(--ok); }

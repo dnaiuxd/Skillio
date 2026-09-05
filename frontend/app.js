@@ -62,11 +62,9 @@ function effectiveTheme() {
 
 function syncThemeButton() {
   const dark = effectiveTheme() === "dark";
-  els.themeBtn.setAttribute("aria-pressed", String(dark));
-  els.themeBtn.setAttribute(
-    "aria-label",
-    dark ? "Switch to light theme" : "Switch to dark theme"
-  );
+  // role="switch" reports state through aria-checked, so the label stays a
+  // stable noun ("Dark theme") rather than flipping between two verbs.
+  els.themeBtn.setAttribute("aria-checked", String(dark));
   // Keeps the browser chrome (and the installed app's title bar) in step.
   if (els.themeColor) els.themeColor.setAttribute("content", THEME_BG[dark ? "dark" : "light"]);
 }
