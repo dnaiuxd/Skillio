@@ -50,10 +50,20 @@ else
 fi
 
 # --- preflight -------------------------------------------------------------
+VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
 UVICORN="$REPO/backend/.venv/bin/uvicorn"
 [ -x "$UVICORN" ] || fail "No venv found at $REPO/backend/.venv
        Create it first:
-         cd '$REPO/backend' && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+         $VENV_SETUP"
+
+# Executable is not the same as runnable. A venv bakes its absolute path
+# into every script's shebang, so moving or renaming the repo leaves
+# uvicorn present, executable, and pointing at a python that no longer
+# exists. launchd would accept the job and the port would stay silent.
+"$UVICORN" --version >/dev/null 2>&1 || fail "The venv at $REPO/backend/.venv is broken.
+       Its scripts point at a path that no longer exists, which is what
+       happens when the repo is moved or renamed. Rebuild it:
+         $VENV_SETUP"
 
 SKILLSPECTOR="$(command -v skillspector || true)"
 if [ -n "$SKILLSPECTOR" ]; then
