@@ -64,7 +64,7 @@ your agent obeys and malicious instructions there have no code signature.
 ## 2. Get the GUI
 
 ```bash
-git clone https://github.com/dnaiuxd/skills-spector.git
+git clone https://github.com/dnaiuxd/skillio.git
 ```
 
 ### Run it — one-click (macOS)
@@ -129,7 +129,7 @@ pair it with the background service above.
 ### Run it — manually
 
 ```bash
-cd skills-spector/backend
+cd skillio/backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --reload --port 8787
