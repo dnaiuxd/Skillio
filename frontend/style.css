@@ -318,12 +318,19 @@ button {
   color: var(--critical);
 }
 
-/* Its own line in the meta block: quiet provenance, what you are running
-   rather than something to act on. Hidden until the backend reports it, so
-   a version never appears half-written or as a bare "v". */
+/* Quiet provenance beside the credit: what you are running, not something
+   to act on. Hidden until the backend reports it, so a version never appears
+   half-written or as a bare "v". */
 .app-version {
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
+}
+
+.app-version::after {
+  content: "·";
+  /* Explicit on both sides rather than spaces inside the content string,
+     which collapse unpredictably next to a flex boundary. */
+  margin: 0 0.75em;
 }
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
@@ -476,14 +483,15 @@ main {
   color: var(--ink-soft);
 }
 
-/* Stacked, so the version reads as its own line rather than a fragment of
-   the credit. Both are the same block; only one is ever visible. */
+/* One line: version, separator, credit. No flex gap — the separator owns
+   the spacing on both sides, so it stays symmetrical instead of picking up
+   an extra gap on one side only. */
 .rail-credit,
 .page-footer {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 0;
   font-size: var(--text-sm);
   color: var(--ink-soft);
 }
@@ -509,12 +517,9 @@ main {
   border-radius: 2px;
 }
 
-/* A rule sets the meta block apart from the form above it — the same
-   separation .page-footer already draws on narrow screens. */
 .rail-credit {
   margin: auto 0 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  padding-top: 28px;
 }
 
 .page-footer {
