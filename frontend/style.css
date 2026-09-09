@@ -166,6 +166,26 @@ button {
   gap: 6px 24px;
 }
 
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Says what the app is, where a product normally says it. Divided from the
+   lockup by a rule rather than space alone, so it reads as a caption to the
+   mark and not as part of it. Dropped when the header gets tight rather than
+   wrapped under the mark, where it would make the header taller for a line
+   nobody needs in order to use the app. */
+.topbar-tagline {
+  margin: 0 0 0 18px;
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
 /* The logo is a lockup — mark plus wordmark — so the <h1> holds it directly
    and carries its accessible name in visually hidden text. */
 .topbar-title {
@@ -1760,6 +1780,10 @@ main {
 }
 
 @media (max-width: 700px) {
+  /* Measured, not guessed: the line holds to 700px with ~38px still between
+     the brand and the theme switch, and wraps the header below that. */
+  .topbar-tagline { display: none; }
+
   main { padding: 20px; }
 
   .topbar-inner {
