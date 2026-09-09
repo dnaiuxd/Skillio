@@ -140,6 +140,14 @@ start. Open **http://localhost:8787**.
 
 ## Using it
 
+- **Registry reports are trimmed before they are stored.** A live scan of
+  the official registry came back at 196 MB — 96,854 servers, 98,029
+  findings — of which about 180 MB was `servers` and `snapshots`,
+  per-server payload this app never renders. Those two keys are dropped
+  and the findings list is capped at 1,000, taking the stored report to
+  about 0.16 MB. The true count is kept and the detail page says how many
+  were left out, because a short findings list must never be mistaken for
+  a clean one. The score is SkillSpector's and reflects all of them.
 - **Skill / MCP registry** — which of the two things SkillSpector reads.
   A registry URL and a skill URL are not distinguishable by shape, so the
   choice is stated rather than guessed, and it is passed straight through
