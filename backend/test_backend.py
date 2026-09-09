@@ -8,8 +8,14 @@ Every case here is a bug this app actually shipped, or the boundary that
 bug sat on. They are cheap because none of this touches the network, the
 database or the skillspector binary.
 """
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
+import app
+import storage
 from app import _derive_name, _extract_score_and_verdict, _report_fingerprint
 
 
@@ -155,6 +161,103 @@ class DeriveName(unittest.TestCase):
 
     def test_bare_name_survives(self):
         self.assertEqual(_derive_name("model-chat"), "model-chat")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class ScanSlot(unittest.TestCase):
+    """Scans run one at a time. The slot is what says so, and a slot that
+    leaks is worse than a blocking POST: the app refuses every later scan
+    with nothing running to justify it."""
+
+    def setUp(self):
+        app._release_scan_slot()
+
+    tearDown = setUp
+
+    def test_a_second_scan_is_refused_while_one_holds_the_slot(self):
+        self.assertTrue(app._claim_scan_slot())
+        self.assertFalse(app._claim_scan_slot())
+
+    def test_releasing_lets_the_next_scan_through(self):
+        app._claim_scan_slot()
+        app._release_scan_slot()
+        self.assertTrue(app._claim_scan_slot())
+
+    def test_release_is_safe_when_nothing_is_running(self):
+        app._release_scan_slot()
+        self.assertTrue(app._claim_scan_slot())
+
+
+class ScanLifecycle(unittest.TestCase):
+    """The row is the job, so the row has to be honest about it — including
+    after a restart, where a row still marked 'running' has no worker behind
+    it and would otherwise spin forever."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self._patch = mock.patch.object(storage, "DB_PATH", Path(self.tmp) / "t.db")
+        self._patch.start()
+        storage.init_db()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _finish(self, source="s", name="n", score=10):
+        return storage.upsert_scan(
+            source=source, name=name, score=score, verdict="CAUTION",
+            report={"risk_assessment": {"score": score}}, error=None,
+            fingerprint="fp",
+        )
+
+    def test_begin_scan_opens_a_running_row(self):
+        row = storage.begin_scan("s", "n")
+        self.assertEqual(row["scan_state"], "running")
+        self.assertIsNone(row["score"])
+
+    def test_finishing_takes_the_row_out_of_running(self):
+        storage.begin_scan("s", "n")
+        self.assertEqual(self._finish()["scan_state"], "done")
+
+    def test_a_rescan_keeps_the_previous_result_on_show(self):
+        # The old answer is the best one available until the new one lands,
+        # so a re-scan must not blank the row it is refreshing.
+        self._finish(score=42)
+        row = storage.begin_scan("s", "n")
+        self.assertEqual(row["scan_state"], "running")
+        self.assertEqual(row["score"], 42)
+
+    def test_a_rescan_clears_the_previous_error(self):
+        storage.upsert_scan(source="s", name="n", score=None, verdict=None,
+                            report=None, error="skillspector not found")
+        self.assertIsNone(storage.begin_scan("s", "n")["error"])
+
+    def test_the_sweep_closes_a_scan_orphaned_by_a_restart(self):
+        storage.begin_scan("s", "n")
+        self.assertEqual(storage.sweep_running_scans(), 1)
+        row = storage.find_by_source("s")
+        self.assertEqual(row["scan_state"], "done")
+        self.assertIn("never finished", row["error"])
+
+    def test_the_sweep_leaves_finished_scans_alone(self):
+        self._finish()
+        self.assertEqual(storage.sweep_running_scans(), 0)
+        self.assertIsNone(storage.find_by_source("s")["error"])
+
+    def test_the_sweep_does_not_overwrite_a_real_error(self):
+        # A row can be 'running' and already carry an error from the scan
+        # before it; the real cause is more useful than the generic one.
+        storage.upsert_scan(source="s", name="n", score=None, verdict=None,
+                            report=None, error="the real cause")
+        conn = storage.get_conn()
+        conn.execute("UPDATE skills SET scan_state = 'running' WHERE source = 's'")
+        conn.commit()
+        conn.close()
+        storage.sweep_running_scans()
+        self.assertEqual(storage.find_by_source("s")["error"], "the real cause")
 
 
 if __name__ == "__main__":

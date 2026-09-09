@@ -25,7 +25,10 @@ _SCHEMA = """
         report_fingerprint TEXT,
         gate_cleared INTEGER NOT NULL DEFAULT 0,
         report_json TEXT,
-        error TEXT
+        error TEXT,
+        -- Scan lifecycle, distinct from `status` above, which is the gate
+        -- decision. 'running' means a worker is filling this row in.
+        scan_state TEXT NOT NULL DEFAULT 'done'
     )
 """
 
@@ -34,6 +37,7 @@ _ADDED_COLUMNS = (
     ("archived", "INTEGER NOT NULL DEFAULT 0"),
     ("report_fingerprint", "TEXT"),
     ("gate_cleared", "INTEGER NOT NULL DEFAULT 0"),
+    ("scan_state", "TEXT NOT NULL DEFAULT 'done'"),
 )
 
 
@@ -79,6 +83,67 @@ def find_by_source(source: str) -> Optional[dict[str, Any]]:
     return _row_to_dict(row) if row else None
 
 
+def begin_scan(source: str, name: str) -> dict[str, Any]:
+    """Claim a row for a scan that is about to start, and return it.
+
+    The row is the job: it appears in the log immediately as 'running' so a
+    scan is visible while it happens rather than only once it lands. A re-scan
+    keeps the previous score and report on show until the new one replaces
+    them — the old answer is still the best one available until then.
+    """
+    now = time.time()
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT id FROM skills WHERE source = ?", (source,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE skills
+            SET name = ?, last_scanned = ?, archived = 0,
+                scan_state = 'running', error = NULL
+            WHERE id = ?
+            """,
+            (name, now, existing["id"]),
+        )
+        skill_id = existing["id"]
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO skills (source, name, first_scanned, last_scanned,
+                                score, verdict, status, scan_state)
+            VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'running')
+            """,
+            (source, name, now, now),
+        )
+        skill_id = cur.lastrowid
+    conn.commit()
+    row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+    conn.close()
+    return _row_to_dict(row)
+
+
+def sweep_running_scans() -> int:
+    """Close out scans orphaned by a restart.
+
+    A worker thread dies with the process, so a row left saying 'running'
+    would spin in the UI forever with nothing behind it. Called on startup.
+    """
+    conn = get_conn()
+    cur = conn.execute(
+        """
+        UPDATE skills
+        SET scan_state = 'done', error = COALESCE(error, ?)
+        WHERE scan_state = 'running'
+        """,
+        ("The server stopped while this scan was running, so it never "
+         "finished. Scan it again.",),
+    )
+    conn.commit()
+    conn.close()
+    return cur.rowcount
+
+
 def upsert_scan(
     source: str,
     name: str,
@@ -110,6 +175,7 @@ def upsert_scan(
             UPDATE skills
             SET name = ?, last_scanned = ?, score = ?, verdict = ?,
                 report_json = ?, error = ?, archived = 0,
+                scan_state = 'done',
                 -- A failed scan carries no fingerprint; keep the last known
                 -- good one or the next real change would not be detected.
                 report_fingerprint = COALESCE(?, report_fingerprint),
@@ -130,8 +196,8 @@ def upsert_scan(
             """
             INSERT INTO skills (source, name, first_scanned, last_scanned,
                                  score, verdict, status, report_json, error,
-                                 report_fingerprint)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                                 report_fingerprint, scan_state)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'done')
             """,
             (source, name, now, now, score, verdict, report_json, error, fingerprint),
         )

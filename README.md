@@ -220,11 +220,17 @@ start. Open **http://localhost:8787**.
   (`risk_score`, `findings[]`) are still accepted as a fallback. If a
   later release renames things, check `_extract_score_and_verdict` in
   `backend/app.py` and `renderFindings` in `frontend/app.js`.
-- Scans run synchronously (the request blocks until `skillspector`
-  finishes) and time out after 5 minutes. That's fine for single skills
-  but will feel slow on a big repo with the LLM pass on. If that becomes
-  a problem, the natural next step is a background job queue instead of a
-  blocking POST.
+- Scans run in the background. The POST returns as soon as the row
+  exists, and the row carries its own progress: it shows up in the log
+  marked *scanning…* and fills in when `skillspector` finishes. So the
+  scan is visible where you'd look for it, and reloading the page or
+  closing the tab doesn't lose it — the state lives on the server, not in
+  the tab. A re-scan keeps the previous score on show, dimmed, until the
+  new one lands; the old answer is still the best one available until
+  then. One scan runs at a time — a second request gets a 409 rather than
+  queueing — and a scan still times out after 5 minutes. If the server
+  stops mid-scan, that row is closed out on the next start and says so,
+  instead of spinning forever with nothing behind it.
 
 ## Tests
 
@@ -239,9 +245,11 @@ They cover the pure functions, which is where every bug this app has
 shipped actually lived: report parsing (`_extract_score_and_verdict`),
 the gate fingerprint that decides whether a re-scan invalidates your
 decision (`_report_fingerprint`), the risk band (`severityBand`), the
-incomplete-scan notice (`coverageNotice`), and severity counting. No
-network, no database, no `skillspector` binary — the whole suite runs in
-well under a second.
+incomplete-scan notice (`coverageNotice`), and severity counting. The
+scan lifecycle is covered too — the one-at-a-time slot, and the startup
+sweep that closes out a scan orphaned by a restart — against a throwaway
+database in a temp directory. No network and no `skillspector` binary;
+the whole suite still runs in well under a second.
 
 `frontend/tests/run.js` loads `app.js` behind a small DOM stub rather
 than copying functions out of it, so renaming something in the app fails

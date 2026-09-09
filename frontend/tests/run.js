@@ -85,12 +85,13 @@ vm.runInContext(
 
 const { severityBand, bandClass, severityWord, coverageNotice,
         gateStatusLabel, countBySeverity, isHighRisk, severityRank,
-        showSourceError, clearSourceError, runScan } = sandbox;
+        showSourceError, clearSourceError, runScan,
+        isScanning, syncScanState } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
-  showSourceError, clearSourceError, runScan,
+  showSourceError, clearSourceError, runScan, isScanning, syncScanState,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -323,6 +324,42 @@ test("a source that is present scans rather than nudging", () => {
   runScan();
   assert.equal(fieldError.hidden, true, "a real source must not be rejected");
   assert.equal(scanInput.getAttribute("aria-invalid"), null);
+});
+
+// --- background scanning ---------------------------------------------------
+// The scan runs on the server and the row carries its progress, so the log —
+// not a flag in this tab — decides whether the form is locked. That is what
+// makes a reload mid-scan pick the state back up instead of losing it.
+const useLlm = sandbox.document.getElementById("use-llm");
+const scanBtn = sandbox.document.getElementById("scan-btn");
+
+test("a row is scanning only while the server says so", () => {
+  assert.equal(isScanning({ scan_state: "running" }), true);
+  assert.equal(isScanning({ scan_state: "done" }), false);
+  assert.equal(isScanning({}), false);
+  assert.equal(isScanning(null), false);
+});
+
+test("a running row locks the form, even on a cold load", () => {
+  // No scan was started in this tab; the state comes purely from the log.
+  syncScanState([{ scan_state: "running" }, { scan_state: "done" }]);
+  assert.equal(scanBtn.disabled, true);
+  assert.equal(scanBtn.textContent, "Scanning…");
+  assert.equal(useLlm.disabled, true);
+});
+
+test("the form comes back once nothing is running", () => {
+  syncScanState([{ scan_state: "running" }]);
+  syncScanState([{ scan_state: "done" }]);
+  assert.equal(scanBtn.disabled, false);
+  assert.equal(scanBtn.textContent, "Scan");
+  assert.equal(useLlm.disabled, false);
+});
+
+test("an empty log leaves the form usable", () => {
+  syncScanState([]);
+  assert.equal(scanBtn.disabled, false);
+  assert.equal(scanBtn.textContent, "Scan");
 });
 
 // --- report ----------------------------------------------------------------

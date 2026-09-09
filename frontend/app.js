@@ -96,7 +96,13 @@ function toggleTheme() {
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
 let currentSkillId = null;
+// True while the server has a scan in flight — set from the log, not guessed
+// here, so a reload during a scan restores the state instead of losing it.
 let scanning = false;
+let posting = false;        // the POST itself, before the row exists
+let pollTimer = null;
+let pendingScanId = null;   // the row to open once its scan lands
+const POLL_MS = 1500;
 let stagedFile = null;
 let showingArchived = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -276,10 +282,49 @@ async function checkHealth() {
   }
 }
 
+function isScanning(skill) {
+  return !!skill && skill.scan_state === "running";
+}
+
+// The scan runs on the server and the row carries its progress, so the log is
+// the source of truth for "is a scan happening" — not a flag in this tab. That
+// is what makes a reload mid-scan pick up where it left off.
+function setScanControls(busy) {
+  for (const el of [els.scanInput, els.useLlm, els.scanBtn, els.fileInput,
+                    els.fileClear]) {
+    el.disabled = busy;
+  }
+  if (!busy) els.scanInput.disabled = stagedFile != null;
+  els.scanBtn.textContent = busy ? "Scanning…" : "Scan";
+}
+
+function syncScanState(skills) {
+  scanning = skills.some(isScanning);
+  setScanControls(scanning);
+  clearTimeout(pollTimer);
+  if (scanning) {
+    pollTimer = setTimeout(loadSkills, POLL_MS);
+    return;
+  }
+  pollTimer = null;
+  hideScanStatus();
+  // Opening the finished report is the old blocking flow's payoff; keep it,
+  // but never yank the view out from under someone already reading something.
+  if (pendingScanId != null) {
+    const id = pendingScanId;
+    pendingScanId = null;
+    if (els.detailView.hidden) openDetail(id);
+  }
+}
+
 async function loadSkills() {
   try {
     const res = await fetch(`${API}/skills?archived=${showingArchived}`);
-    renderSkillList(await res.json());
+    const skills = await res.json();
+    renderSkillList(skills);
+    // A running scan always lives in the current log, so the archived view
+    // cannot speak to it. Polling resumes when the current tab comes back.
+    if (!showingArchived) syncScanState(skills);
   } catch (e) {
     // Backend unreachable — checkHealth() already surfaces this in the topbar.
   }
@@ -324,7 +369,7 @@ function renderSkillList(skills) {
 
   for (const s of skills) {
     const tr = document.createElement("tr");
-    tr.className = "skill-row";
+    tr.className = isScanning(s) ? "skill-row skill-row--scanning" : "skill-row";
 
     const sevWord = severityBand(s);
     const sevClass = bandClass(sevWord);
@@ -332,7 +377,9 @@ function renderSkillList(skills) {
     const verdictText = humanize(s.verdict) || (s.error ? "error" : "—");
     // Only the high-risk "do not install" call gets the solid red badge;
     // everything else is quiet text.
-    const verdictCell = isHighRisk(s)
+    const verdictCell = isScanning(s)
+      ? `<span class="scanning-tag"><span class="scanning-dot" aria-hidden="true"></span>scanning…</span>`
+      : isHighRisk(s)
       ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
       : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
 
@@ -510,24 +557,16 @@ function humanize(str) {
 }
 
 async function runScan() {
-  if (scanning) return;
+  if (scanning || posting) return;
   const source = els.scanInput.value.trim();
   if (!stagedFile && !source) {
     showSourceError("Enter a Git URL, path, or .zip — or choose a file below.");
     return;
   }
-  scanning = true;
+  posting = true;
 
   const useLlm = els.useLlm.checked;
-  const controls = [
-    els.scanInput,
-    els.useLlm,
-    els.scanBtn,
-    els.fileInput,
-    els.fileClear,
-  ];
-  controls.forEach((el) => (el.disabled = true));
-  els.scanBtn.textContent = "Scanning…";
+  setScanControls(true);
   const label = deriveName(stagedFile ? stagedFile.name : source);
   showScanStatus(
     `Scanning ${label}` +
@@ -557,23 +596,21 @@ async function runScan() {
       }
       throw new Error(detail);
     }
+    // The POST now returns the row, not the result: the scan is running on
+    // the server. Remember which row to open, and let the log carry it.
     const skill = await res.json();
-    hideScanStatus();
-    // A new or re-run scan always lands in the current log.
-    setTab(false);
-    if (skill && skill.id != null) {
-      openDetail(skill.id);
-    }
+    pendingScanId = skill && skill.id != null ? skill.id : null;
     clearStagedFile();
     els.scanInput.value = "";
     updateSourceType();
+    // A new or re-run scan always lands in the current log. setTab reloads it,
+    // and syncScanState takes over the controls and the polling from there.
+    setTab(false);
   } catch (e) {
     showScanStatus(`Scan request failed: ${e.message}`, true);
+    setScanControls(false);
   } finally {
-    scanning = false;
-    controls.forEach((el) => (el.disabled = false));
-    els.scanInput.disabled = stagedFile != null;
-    els.scanBtn.textContent = "Scan";
+    posting = false;
   }
 }
 

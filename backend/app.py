@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -38,6 +39,9 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     storage.init_db()
+    # A worker thread dies with the process, so any row still marked 'running'
+    # is a leftover from a previous life, not a scan anyone is waiting on.
+    storage.sweep_running_scans()
     yield
 
 
@@ -247,6 +251,85 @@ def get_skill(skill_id: int) -> dict:
     return skill
 
 
+# --- running a scan without blocking the request -----------------------------
+# The scan row IS the job: it is written as 'running' before the worker starts,
+# so the log shows the scan while it happens instead of only once it lands.
+#
+# One at a time. skillspector with the LLM pass on is the slow case, and
+# running several at once mostly spends the provider quota faster.
+_scan_lock = threading.Lock()
+_scan_active = False
+
+
+def _claim_scan_slot() -> bool:
+    global _scan_active
+    with _scan_lock:
+        if _scan_active:
+            return False
+        _scan_active = True
+        return True
+
+
+def _release_scan_slot() -> None:
+    global _scan_active
+    with _scan_lock:
+        _scan_active = False
+
+
+SCAN_BUSY_DETAIL = "A scan is already running. Wait for it to finish."
+
+
+def _scan_worker(
+    source: str,
+    name: str,
+    target: str,
+    use_llm: bool,
+    cleanup_dir: Optional[str] = None,
+) -> None:
+    """Run one scan and write the result onto its row. Never raises."""
+    try:
+        try:
+            report = _run_scan(target, use_llm)
+        except RuntimeError as exc:
+            storage.upsert_scan(
+                source=source, name=name, score=None, verdict=None,
+                report=None, error=str(exc),
+            )
+            return
+        score, verdict = _extract_score_and_verdict(report)
+        storage.upsert_scan(
+            source=source, name=name, score=score, verdict=verdict,
+            report=report, error=None, fingerprint=_report_fingerprint(report),
+        )
+    except Exception as exc:  # noqa: BLE001 - the row must never stay 'running'
+        storage.upsert_scan(
+            source=source, name=name, score=None, verdict=None,
+            report=None, error=f"Scan failed unexpectedly: {exc}",
+        )
+    finally:
+        if cleanup_dir:
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
+        _release_scan_slot()
+
+
+def _start_scan(
+    source: str, name: str, target: str, use_llm: bool,
+    cleanup_dir: Optional[str] = None,
+) -> dict:
+    """Claim the row, hand the work to a thread, and return the row at once."""
+    try:
+        row = storage.begin_scan(source, name)
+    except Exception:
+        _release_scan_slot()
+        raise
+    threading.Thread(
+        target=_scan_worker,
+        args=(source, name, target, use_llm, cleanup_dir),
+        daemon=True,
+    ).start()
+    return row
+
+
 @app.post("/api/scan")
 def scan(req: ScanRequest) -> dict:
     # expanduser so "~/Downloads/skill.zip" works; a no-op for URLs.
@@ -256,19 +339,9 @@ def scan(req: ScanRequest) -> dict:
 
     name = _derive_name(source)
 
-    try:
-        report = _run_scan(source, req.use_llm)
-    except RuntimeError as exc:
-        return storage.upsert_scan(
-            source=source, name=name, score=None, verdict=None,
-            report=None, error=str(exc),
-        )
-
-    score, verdict = _extract_score_and_verdict(report)
-    return storage.upsert_scan(
-        source=source, name=name, score=score, verdict=verdict,
-        report=report, error=None, fingerprint=_report_fingerprint(report),
-    )
+    if not _claim_scan_slot():
+        raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
+    return _start_scan(source, name, source, req.use_llm)
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -279,13 +352,16 @@ async def scan_upload(
     file: UploadFile = File(...),
     use_llm: bool = Form(False),
 ) -> dict:
-    """Scan an uploaded .zip: stream it to a temp file, scan, then delete it."""
+    """Scan an uploaded .zip: stream it to a temp file, then scan in the
+    background. Once the worker has been handed the file it owns the temp
+    directory and deletes it when the scan ends, however it ends."""
     filename = os.path.basename(file.filename or "").strip() or "upload.zip"
     if not filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Only .zip archives can be uploaded")
 
     tmpdir = tempfile.mkdtemp(prefix="skillio_")
     tmppath = os.path.join(tmpdir, filename)
+    handed_off = False
     try:
         written = 0
         digest = hashlib.sha256()
@@ -305,21 +381,15 @@ async def scan_upload(
         name = _derive_name(filename)
         source = f"{filename} · upload:{digest.hexdigest()[:32]}"
 
-        try:
-            report = _run_scan(tmppath, use_llm)
-        except RuntimeError as exc:
-            return storage.upsert_scan(
-                source=source, name=name, score=None, verdict=None,
-                report=None, error=str(exc),
-            )
-
-        score, verdict = _extract_score_and_verdict(report)
-        return storage.upsert_scan(
-            source=source, name=name, score=score, verdict=verdict,
-            report=report, error=None, fingerprint=_report_fingerprint(report),
-        )
+        if not _claim_scan_slot():
+            raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
+        row = _start_scan(source, name, tmppath, use_llm, cleanup_dir=tmpdir)
+        handed_off = True
+        return row
     finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        # Only ours to delete until the worker takes it on.
+        if not handed_off:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @app.post("/api/skills/{skill_id}/status")

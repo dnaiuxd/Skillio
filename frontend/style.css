@@ -1102,6 +1102,41 @@ main {
 
 /* Verdict cell — quiet text unless it's the high-risk "do not install"
    case, which keeps the solid red .pill treatment. */
+/* A row whose scan is still running. The word carries it; the dot is
+   decoration, so it stops completely under reduced motion. --ink-soft rather
+   than an accent: this is a state, not a result, and the result columns beside
+   it are the ones that should hold the eye once they mean something. */
+.scanning-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-base);
+  color: var(--ink-soft);
+}
+
+.scanning-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanning-dot { animation: none; }
+}
+
+/* A re-scan keeps the previous score on show, so dim it: still readable, but
+   clearly the old answer rather than the one being fetched. */
+.skill-row--scanning .score-badge,
+.skill-row--scanning .score-severity {
+  opacity: 0.45;
+}
+
 .verdict-text {
   font-size: var(--text-base);
   text-transform: capitalize;
