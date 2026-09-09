@@ -286,7 +286,11 @@ def check_updates() -> dict:
     try:
         latest, url = _latest_tag()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Couldn't reach GitHub: {exc}")
+        # The cause only: the caller supplies the framing, and "couldn't reach
+        # GitHub" would be a lie for a feed that answered but carried no tags.
+        raise HTTPException(
+            status_code=502, detail=f"couldn't read the tag feed ({exc})"
+        )
     return {
         "installed": installed,
         "latest": latest,

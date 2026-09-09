@@ -218,17 +218,24 @@ button {
   overflow-wrap: anywhere;
 }
 
-/* Reads as a line of text, not a chip, but it is still a standalone control —
-   so it gets a 44px hit area the same way .theme-switch does, out of space
-   that costs nothing visually. */
+/* Just a block context: #health and the button are inline inside it, so the
+   trigger follows the version straight on from the text and wraps with it.
+   A flex row would not do — the rail is nowhere near wide enough to hold
+   both on one line, so they would simply end up stacked. */
+.health-row {
+  line-height: 1.4;
+}
+
+/* Set in the health line's own face so it reads as part of that line, like
+   the "install it first" link already there. Vertical padding on an inline
+   box does not grow the line, so this buys a ~44px hit area for free. */
 .update-check {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0;
+  display: inline;
+  margin-left: 8px;
+  padding: 14px 0;
   border: 0;
   background: none;
+  font-family: var(--mono);
   font-size: var(--text-sm);
   color: var(--link);
   text-decoration: underline;
@@ -246,22 +253,67 @@ button {
   outline-offset: 2px;
 }
 
+/* Base state is a quiet line: "you are up to date" is an answer, not an
+   event, and a card around it would claim attention it has not earned. */
 .update-result {
   margin: 0;
   font-size: var(--text-sm);
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--ink-soft);
 }
 
-.update-result a { color: var(--link); }
-
-.update-result code {
-  font-family: var(--mono);
-  font-size: var(--text-xs);
-  overflow-wrap: anywhere;
+.update-result .update-link {
+  color: var(--link);
+  margin-left: 6px;
 }
 
-.update-result.error { color: var(--critical); }
+/* An available update is the one state with something to do, so it gets the
+   house callout — same 1px border and 20px radius as .detail-error — and the
+   command on its own line where it can be read and selected. Neutral border
+   rather than a status colour: a newer release is news, not a risk. */
+.update-result--available {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.update-result--available .update-headline {
+  font-weight: 600;
+}
+
+.update-result--available .update-link {
+  margin-left: 0;
+}
+
+.update-command-label {
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.update-command {
+  align-self: stretch;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  /* Its own line, and its own box: this is something to copy, not to read
+     past in the middle of a sentence. */
+  margin-top: -2px;
+}
+
+.update-result--error {
+  color: var(--critical);
+}
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
    visible track stays 52x28. */

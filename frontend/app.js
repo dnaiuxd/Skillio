@@ -272,7 +272,12 @@ function fmtDate(ts) {
 function updateNotice(d) {
   if (!d) return null;
   if (d.update_available) {
-    return { kind: "available", text: `${d.latest} is available`, url: d.url };
+    return {
+      kind: "available",
+      text: `${d.latest} is available`,
+      url: d.url,
+      command: "uv tool upgrade skillspector",
+    };
   }
   if (!d.comparable) {
     return {
@@ -291,7 +296,7 @@ async function checkForUpdates() {
   els.updateCheck.textContent = "Checking…";
   els.updateResult.hidden = false; // reveal before writing, as elsewhere
   els.updateResult.textContent = "";
-  els.updateResult.classList.remove("error");
+  els.updateResult.className = "update-result";
   try {
     const res = await fetch(`${API}/updates`);
     if (!res.ok) {
@@ -305,27 +310,37 @@ async function checkForUpdates() {
     }
     const notice = updateNotice(await res.json());
     if (!notice) throw new Error("empty response");
-    els.updateResult.textContent = notice.text;
+    // Only the kind with something to do earns the weight of a card.
+    els.updateResult.className = `update-result update-result--${notice.kind}`;
+
+    const head = document.createElement("span");
+    head.className = "update-headline";
+    head.textContent = notice.text;
+    els.updateResult.append(head);
+
     if (notice.url) {
       // Built with DOM calls, not innerHTML: escapeHtml is for text nodes and
       // would not make a URL safe to drop into an href.
-      els.updateResult.append(" — ");
       const a = document.createElement("a");
+      a.className = "update-link";
       a.href = notice.url;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
-      a.textContent = "release notes";
+      a.textContent = "Release notes ↗";
       els.updateResult.append(a);
     }
-    if (notice.kind === "available") {
-      els.updateResult.append(". Update with ");
+    if (notice.command) {
+      const label = document.createElement("span");
+      label.className = "update-command-label";
+      label.textContent = "Update with";
       const code = document.createElement("code");
-      code.textContent = "uv tool upgrade skillspector";
-      els.updateResult.append(code);
+      code.className = "update-command";
+      code.textContent = notice.command;
+      els.updateResult.append(label, code);
     }
   } catch (e) {
-    els.updateResult.textContent = `Couldn't reach GitHub — ${e.message}`;
-    els.updateResult.classList.add("error");
+    els.updateResult.textContent = `Update check failed — ${e.message}`;
+    els.updateResult.className = "update-result update-result--error";
   } finally {
     updateChecking = false;
     els.updateCheck.disabled = false;
