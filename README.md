@@ -195,9 +195,8 @@ start. Open **http://localhost:8787**.
 ## Notes
 
 - Fonts are self-hosted (latin `.woff2` subsets in `frontend/fonts/`, no
-  CDN call): Montserrat for headings, Open
-  Sans for body/UI, system mono for code. Licenses sit next to the files
-  (both are OFL).
+  CDN call): Noto Sans for headings and body/UI, Noto Sans Mono for code.
+  Licenses sit next to the files (both are OFL).
 - Data lives in `backend/skillio.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - **Theme** follows your OS by default; the sun/moon switch in the
