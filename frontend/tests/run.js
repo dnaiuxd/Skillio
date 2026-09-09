@@ -15,28 +15,46 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 // --- the smallest DOM that lets app.js finish evaluating -------------------
-const el = () => ({
-  addEventListener() {},
-  setAttribute() {},
-  getAttribute: () => null,
-  focus() {},
-  contains: () => false,
-  classList: { add() {}, remove() {}, toggle() {} },
-  querySelectorAll: () => [],
-  querySelector: () => null,
-  style: {},
-  dataset: {},
-  files: [],
-  hidden: false,
-  textContent: "",
-  innerHTML: "",
-  value: "",
-});
+// Attributes and focus are real rather than no-ops: the empty-source nudge is
+// expressed entirely in aria-invalid and where focus lands, so a stub that
+// swallowed both would assert nothing.
+let focused = null;
+const el = (id) => {
+  const attrs = new Map();
+  const node = {
+    id,
+    addEventListener() {},
+    setAttribute(k, v) { attrs.set(k, String(v)); },
+    getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null),
+    hasAttribute: (k) => attrs.has(k),
+    removeAttribute(k) { attrs.delete(k); },
+    focus() { focused = node; },
+    contains: () => false,
+    classList: { add() {}, remove() {}, toggle() {} },
+    querySelectorAll: () => [],
+    querySelector: () => null,
+    style: {},
+    dataset: {},
+    files: [],
+    hidden: false,
+    textContent: "",
+    innerHTML: "",
+    value: "",
+  };
+  return node;
+};
+
+// One node per id, so a test can hold the same object app.js captured in els.
+const nodes = new Map();
+const byId = (id) => {
+  if (!nodes.has(id)) nodes.set(id, el(id));
+  return nodes.get(id);
+};
 
 const sandbox = {
   console,
   document: {
-    getElementById: el,
+    getElementById: byId,
     querySelector: el,
     querySelectorAll: () => [],
     addEventListener() {},
@@ -66,11 +84,13 @@ vm.runInContext(
 );
 
 const { severityBand, bandClass, severityWord, coverageNotice,
-        gateStatusLabel, countBySeverity, isHighRisk, severityRank } = sandbox;
+        gateStatusLabel, countBySeverity, isHighRisk, severityRank,
+        showSourceError, clearSourceError, runScan } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
+  showSourceError, clearSourceError, runScan,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -225,6 +245,84 @@ test("a missing severity is counted, not dropped", () => {
 test("severity ranks sort worst-first, unknowns last", () => {
   assert.ok(severityRank("critical") < severityRank("high"));
   assert.ok(severityRank("low") < severityRank("nonsense"));
+});
+
+// --- empty-source nudge ----------------------------------------------------
+// The bug this guards: `if (!stagedFile && !source) return;` meant clicking
+// Scan on an empty form did nothing at all, which reads as a broken button.
+const scanInput = sandbox.document.getElementById("scan-input");
+const fieldError = sandbox.document.getElementById("scan-input-error");
+const scanStatus = sandbox.document.getElementById("scan-status");
+
+function resetNudge() {
+  scanInput.removeAttribute("aria-invalid");
+  scanInput.value = "";
+  fieldError.hidden = true;
+  fieldError.textContent = "";
+  scanStatus.hidden = true;
+  scanStatus.textContent = "";
+  focused = null;
+}
+
+test("scanning with no source says so instead of returning silently", () => {
+  resetNudge();
+  // runScan is async, but everything up to its first await — the empty-source
+  // guard included — runs synchronously, so the side effects are here already.
+  runScan();
+  assert.equal(fieldError.hidden, false);
+  assert.match(fieldError.textContent, /Git URL/);
+});
+
+test("the nudge marks the field invalid and puts focus where the fix goes", () => {
+  resetNudge();
+  runScan();
+  assert.equal(scanInput.getAttribute("aria-invalid"), "true");
+  assert.equal(focused, scanInput, "focus should return to the empty input");
+});
+
+test("whitespace is not a source", () => {
+  resetNudge();
+  scanInput.value = "   ";
+  runScan();
+  assert.equal(fieldError.hidden, false);
+});
+
+test("the nudge stays out of #scan-status, which is action feedback", () => {
+  // Field validation belongs beside the field; #scan-status is kept for scan
+  // progress and for uploads that were rejected.
+  resetNudge();
+  runScan();
+  assert.equal(scanStatus.hidden, true);
+  assert.equal(scanStatus.textContent, "");
+});
+
+test("clearing takes back both the message and the invalid state", () => {
+  resetNudge();
+  runScan();
+  clearSourceError();
+  assert.equal(scanInput.getAttribute("aria-invalid"), null);
+  assert.equal(fieldError.hidden, true);
+  assert.equal(fieldError.textContent, "");
+});
+
+test("clearing is a no-op when nothing is wrong", () => {
+  // It runs on every keystroke, so it must not touch a slot it did not set.
+  resetNudge();
+  fieldError.hidden = false;
+  fieldError.textContent = "untouched";
+  clearSourceError();
+  assert.equal(fieldError.textContent, "untouched");
+  assert.equal(fieldError.hidden, false);
+});
+
+// Last of this group on purpose: a source that passes the guard leaves the
+// module mid-scan, waiting on a fetch the stub never resolves.
+test("a source that is present scans rather than nudging", () => {
+  resetNudge();
+  scanInput.value = "https://github.com/example/skill";
+  runScan();
+  assert.equal(fieldError.hidden, true, "a real source must not be rejected");
+  assert.equal(scanInput.getAttribute("aria-invalid"), null);
 });
 
 // --- report ----------------------------------------------------------------
