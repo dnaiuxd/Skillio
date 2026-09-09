@@ -231,7 +231,10 @@ button {
    box does not grow the line, so this buys a ~44px hit area for free. */
 .update-check {
   display: inline;
-  margin-left: 8px;
+  /* Negative vertical margins cancel the padding for layout while leaving it
+     for hit testing: a button is an atomic inline box, so the line grows by
+     its MARGIN box. Tight lines, 44px target, no extra markup. */
+  margin: -14px 0 -14px 8px;
   padding: 14px 0;
   border: 0;
   background: none;
