@@ -496,6 +496,14 @@ main {
   outline-offset: 1px;
 }
 
+/* Must sit after :focus — same specificity, and the error state is entered by
+   moving focus here, so :focus would otherwise repaint the border as --ink.
+   A redundant cue only: the message in #scan-status carries the meaning.
+   --critical clears WCAG 1.4.11 on both grounds (5.61:1 light, 5.16:1 dark). */
+#scan-input[aria-invalid="true"] {
+  border-color: var(--critical);
+}
+
 /* the input is visually hidden, so the ring goes on its skin */
 .llm-toggle input:focus-visible + .switch {
   outline: 2px solid var(--ink);

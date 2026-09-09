@@ -199,6 +199,7 @@ function stageFile(file) {
   els.scanOr.hidden = true;
   els.scanInput.value = "";
   els.scanInput.disabled = true;
+  els.scanInput.removeAttribute("aria-invalid");
   updateSourceType();
   hideScanStatus();
 }
@@ -223,6 +224,21 @@ function showScanStatus(msg, isError = false) {
 function hideScanStatus() {
   els.scanStatus.hidden = true;
   els.scanStatus.classList.remove("error");
+}
+
+// Clicking Scan with nothing entered used to return silently, which reads as
+// a broken button. Focus goes back to the input because that is where the fix
+// is, and aria-invalid gives the state a non-colour cue for the border.
+function showSourceError(msg) {
+  showScanStatus(msg, true);
+  els.scanInput.setAttribute("aria-invalid", "true");
+  els.scanInput.focus();
+}
+
+function clearSourceError() {
+  if (!els.scanInput.hasAttribute("aria-invalid")) return;
+  els.scanInput.removeAttribute("aria-invalid");
+  hideScanStatus();
 }
 
 function fmtDate(ts) {
@@ -486,7 +502,10 @@ function humanize(str) {
 async function runScan() {
   if (scanning) return;
   const source = els.scanInput.value.trim();
-  if (!stagedFile && !source) return;
+  if (!stagedFile && !source) {
+    showSourceError("Enter a Git URL, path, or .zip — or choose a file below.");
+    return;
+  }
   scanning = true;
 
   const useLlm = els.useLlm.checked;
@@ -968,7 +987,10 @@ async function deleteSkill() {
 
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
-els.scanInput.addEventListener("input", updateSourceType);
+els.scanInput.addEventListener("input", () => {
+  clearSourceError();
+  updateSourceType();
+});
 els.llmInfoBtn.addEventListener("click", () => {
   const opening = els.llmInfo.hidden;
   els.llmInfo.hidden = !opening;
