@@ -190,7 +190,7 @@ start. Open **http://localhost:8787**.
   deleted — only the report is kept, and they're identified by a hash of
   their contents, so two unrelated files both named `skill.zip` stay
   separate rows instead of overwriting each other.
-- **Scanner Log** — every skill you've scanned, sorted by most recent. The
+- **Skillio Scan** — every skill you've scanned, sorted by most recent. The
   ⓘ beside the heading opens a short "What is Skillio?" dialog; it reads
   once and then it is in the way, so it lives behind a trigger rather than
   standing above the table. Score,

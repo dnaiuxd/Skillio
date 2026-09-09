@@ -549,7 +549,7 @@ test("the About dialog is a real <dialog> with its trigger and close", () => {
 });
 
 test("the log heading and the registry label read as intended", () => {
-  assert.match(html, /<h2 class="list-title">Scanner Log<\/h2>/);
+  assert.match(html, /<h2 class="list-title">Skillio Scan<\/h2>/);
   // "MCP Registry" is a proper noun; a lowercase r is a typo, not a style.
   assert.equal(/MCP registry/.test(html), false);
   assert.equal(/MCP registry/.test(appSource), false);
