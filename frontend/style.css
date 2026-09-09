@@ -511,23 +511,23 @@ main {
   color: var(--ink-soft);
 }
 
-/* Takes the credit line's own colour so it sits with the version rather
-   than pulling against it, and underlines on hover.
-   Note this is weaker than it was: the justification for hover-only used to
-   be that the link was the whole line, with no neighbouring text to confuse
-   it with. It now sits beside "Skillio vX.Y.Z" in the same colour, so until
-   you hover there is nothing marking it as a link (WCAG 1.4.1). A permanent
-   underline would settle it without touching the colour.
-   The focus ring below still marks it
-   for keyboard users, who never see :hover. */
+/* Takes the credit line's own colour so it sits with the version rather than
+   pulling against it. That is exactly why the underline has to be permanent:
+   it sits beside "Skillio vX.Y.Z" in the same colour, so with a hover-only
+   underline there was nothing at rest distinguishing link from plain text —
+   colour alone, which is what WCAG 1.4.1 rules out. Hover-only also never
+   fires on touch, where most of the reach for a footer credit is.
+   The underline marks it; hover then darkens to full ink so there is still a
+   distinct hover state, and the focus ring below covers keyboard users, who
+   never see :hover at all. */
 .credit-link {
   color: inherit;
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .credit-link:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: var(--ink);
 }
 
 .credit-link:focus-visible {

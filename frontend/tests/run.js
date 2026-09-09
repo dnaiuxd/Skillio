@@ -548,6 +548,17 @@ test("the About dialog is a real <dialog> with its trigger and close", () => {
   assert.match(html, new RegExp(`id="${labelledBy[1]}"`));
 });
 
+test("the credit link is marked as a link without hovering", () => {
+  // It sits beside "Skillio vX.Y.Z" in the same colour, so a hover-only
+  // underline leaves colour as the only thing telling them apart (WCAG
+  // 1.4.1) — and hover never fires on touch at all. Easy to undo by
+  // accident while tidying the rule, hence this.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const rule = css.match(/\.credit-link\s*\{([^}]*)\}/);
+  assert.ok(rule, "no .credit-link rule in style.css");
+  assert.match(rule[1], /text-decoration:\s*underline/);
+});
+
 test("the log heading and the registry label read as intended", () => {
   assert.match(html, /<h2 class="list-title">Skillio Scan<\/h2>/);
   // "MCP Registry" is a proper noun; a lowercase r is a typo, not a style.
