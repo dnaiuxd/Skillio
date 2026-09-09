@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):
 # Skillio's own version, distinct from the skillspector version reported by
 # /api/health. Single source of truth: the UI reads it from that endpoint
 # rather than carrying a second copy that could drift.
-SKILLIO_VERSION = "1.0.0"
+SKILLIO_VERSION = "1.1.0"
 
 app = FastAPI(title="Skillio", version=SKILLIO_VERSION, lifespan=lifespan)
 
