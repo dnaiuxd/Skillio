@@ -71,11 +71,20 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 SCAN_TIMEOUT_SECONDS = 300
+# The official MCP registry is hundreds of servers read in one pass, so it
+# legitimately runs far longer than any single skill. Measured against the live
+# registry at over five minutes, which the skill limit would have cut off — and
+# a skill that runs that long is stuck, so the two cannot share a number.
+MCP_REGISTRY_TIMEOUT_SECONDS = 1800
 
 
 class ScanRequest(BaseModel):
     source: str  # git URL, local path, or zip path
     use_llm: bool = False
+    # SkillSpector reads an MCP Registry payload or URL differently from a
+    # skill, so which one this is has to be said rather than guessed: a
+    # registry URL and a skill URL are not distinguishable by shape.
+    mcp_registry: bool = False
 
 
 class StatusRequest(BaseModel):
@@ -98,7 +107,7 @@ def _derive_name(source: str) -> str:
     return s.split("/")[-1].split("\\")[-1] or s
 
 
-def _run_scan(source: str, use_llm: bool) -> dict:
+def _run_scan(source: str, use_llm: bool, mcp_registry: bool = False) -> dict:
     """Invoke the skillspector CLI and parse its JSON report."""
     binary = _skillspector_path()
     if not binary:
@@ -118,17 +127,22 @@ def _run_scan(source: str, use_llm: bool) -> dict:
     cmd = [binary, "scan", "--format", "json"]
     if not use_llm:
         cmd.append("--no-llm")
+    if mcp_registry:
+        cmd.append("--mcp-registry")
     cmd += ["--", source]
 
+    timeout = (
+        MCP_REGISTRY_TIMEOUT_SECONDS if mcp_registry else SCAN_TIMEOUT_SECONDS
+    )
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=SCAN_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Scan timed out after {SCAN_TIMEOUT_SECONDS}s") from exc
+        raise RuntimeError(f"Scan timed out after {timeout}s") from exc
 
     stdout = proc.stdout.strip()
     if not stdout:
@@ -365,11 +379,12 @@ def _scan_worker(
     target: str,
     use_llm: bool,
     cleanup_dir: Optional[str] = None,
+    mcp_registry: bool = False,
 ) -> None:
     """Run one scan and write the result onto its row. Never raises."""
     try:
         try:
-            report = _run_scan(target, use_llm)
+            report = _run_scan(target, use_llm, mcp_registry)
         except RuntimeError as exc:
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,
@@ -394,17 +409,19 @@ def _scan_worker(
 
 def _start_scan(
     source: str, name: str, target: str, use_llm: bool,
-    cleanup_dir: Optional[str] = None,
+    cleanup_dir: Optional[str] = None, mcp_registry: bool = False,
 ) -> dict:
     """Claim the row, hand the work to a thread, and return the row at once."""
     try:
-        row = storage.begin_scan(source, name)
+        row = storage.begin_scan(
+            source, name, "mcp_registry" if mcp_registry else "skill"
+        )
     except Exception:
         _release_scan_slot()
         raise
     threading.Thread(
         target=_scan_worker,
-        args=(source, name, target, use_llm, cleanup_dir),
+        args=(source, name, target, use_llm, cleanup_dir, mcp_registry),
         daemon=True,
     ).start()
     return row
@@ -421,7 +438,9 @@ def scan(req: ScanRequest) -> dict:
 
     if not _claim_scan_slot():
         raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
-    return _start_scan(source, name, source, req.use_llm)
+    return _start_scan(
+        source, name, source, req.use_llm, mcp_registry=req.mcp_registry
+    )
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024

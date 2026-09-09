@@ -17,7 +17,8 @@ from unittest import mock
 import app
 import storage
 from app import (_derive_name, _extract_score_and_verdict,
-                 _parse_version, _report_fingerprint, _update_available)
+                 _parse_version, _report_fingerprint, _run_scan,
+                 _update_available)
 
 
 class ExtractScoreAndVerdict(unittest.TestCase):
@@ -297,6 +298,70 @@ class VersionComparison(unittest.TestCase):
         self.assertEqual(_parse_version("2.11.0"), (2, 11, 0))
         self.assertIsNone(_parse_version("v2.11"))
         self.assertIsNone(_parse_version(None))
+
+
+class ScanCommand(unittest.TestCase):
+    """What actually reaches the CLI. A skill and an MCP registry are read
+    differently by skillspector, and the flag is the only thing that says
+    which — a registry URL and a skill URL look alike."""
+
+    def _cmd(self, **kwargs):
+        seen = {}
+
+        class Proc:
+            returncode = 0
+            stdout = '{"risk_assessment": {"score": 0}}'
+            stderr = ""
+
+        def fake_run(cmd, **_):
+            seen["cmd"] = cmd
+            return Proc()
+
+        with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", fake_run):
+            _run_scan("SOURCE", **kwargs)
+        return seen["cmd"]
+
+    def test_a_skill_scan_carries_no_registry_flag(self):
+        self.assertNotIn("--mcp-registry", self._cmd(use_llm=False))
+
+    def test_an_mcp_registry_scan_says_so(self):
+        self.assertIn("--mcp-registry", self._cmd(use_llm=False, mcp_registry=True))
+
+    def test_the_flag_stays_ahead_of_the_source_separator(self):
+        # Everything after "--" is the positional. A flag that slipped past it
+        # would be read as part of the source and silently ignored.
+        cmd = self._cmd(use_llm=False, mcp_registry=True)
+        self.assertLess(cmd.index("--mcp-registry"), cmd.index("--"))
+        self.assertEqual(cmd[-1], "SOURCE")
+
+    def test_a_registry_gets_longer_than_a_skill(self):
+        # Measured: the official registry ran past five minutes, which the
+        # skill limit would have killed. A skill running that long is stuck.
+        seen = {}
+
+        class Proc:
+            returncode = 0
+            stdout = '{"risk_assessment": {"score": 0}}'
+            stderr = ""
+
+        def fake_run(cmd, **kw):
+            seen.setdefault("timeouts", []).append(kw.get("timeout"))
+            return Proc()
+
+        with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", fake_run):
+            _run_scan("SOURCE", use_llm=False)
+            _run_scan("SOURCE", use_llm=False, mcp_registry=True)
+        skill_timeout, registry_timeout = seen["timeouts"]
+        self.assertEqual(skill_timeout, app.SCAN_TIMEOUT_SECONDS)
+        self.assertEqual(registry_timeout, app.MCP_REGISTRY_TIMEOUT_SECONDS)
+        self.assertGreater(registry_timeout, skill_timeout)
+
+    def test_llm_and_registry_are_independent(self):
+        with_llm = self._cmd(use_llm=True, mcp_registry=True)
+        self.assertIn("--mcp-registry", with_llm)
+        self.assertNotIn("--no-llm", with_llm)
 
 
 if __name__ == "__main__":

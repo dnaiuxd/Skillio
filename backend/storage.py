@@ -28,7 +28,10 @@ _SCHEMA = """
         error TEXT,
         -- Scan lifecycle, distinct from `status` above, which is the gate
         -- decision. 'running' means a worker is filling this row in.
-        scan_state TEXT NOT NULL DEFAULT 'done'
+        scan_state TEXT NOT NULL DEFAULT 'done',
+        -- What was scanned: 'skill' or 'mcp_registry'. SkillSpector reads the
+        -- two differently, and a row has to remember which it was.
+        target_type TEXT NOT NULL DEFAULT 'skill'
     )
 """
 
@@ -38,6 +41,7 @@ _ADDED_COLUMNS = (
     ("report_fingerprint", "TEXT"),
     ("gate_cleared", "INTEGER NOT NULL DEFAULT 0"),
     ("scan_state", "TEXT NOT NULL DEFAULT 'done'"),
+    ("target_type", "TEXT NOT NULL DEFAULT 'skill'"),
 )
 
 
@@ -83,7 +87,7 @@ def find_by_source(source: str) -> Optional[dict[str, Any]]:
     return _row_to_dict(row) if row else None
 
 
-def begin_scan(source: str, name: str) -> dict[str, Any]:
+def begin_scan(source: str, name: str, target_type: str = "skill") -> dict[str, Any]:
     """Claim a row for a scan that is about to start, and return it.
 
     The row is the job: it appears in the log immediately as 'running' so a
@@ -101,20 +105,20 @@ def begin_scan(source: str, name: str) -> dict[str, Any]:
             """
             UPDATE skills
             SET name = ?, last_scanned = ?, archived = 0,
-                scan_state = 'running', error = NULL
+                scan_state = 'running', error = NULL, target_type = ?
             WHERE id = ?
             """,
-            (name, now, existing["id"]),
+            (name, now, target_type, existing["id"]),
         )
         skill_id = existing["id"]
     else:
         cur = conn.execute(
             """
             INSERT INTO skills (source, name, first_scanned, last_scanned,
-                                score, verdict, status, scan_state)
-            VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'running')
+                                score, verdict, status, scan_state, target_type)
+            VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'running', ?)
             """,
-            (source, name, now, now),
+            (source, name, now, now, target_type),
         )
         skill_id = cur.lastrowid
     conn.commit()

@@ -51,11 +51,20 @@ const byId = (id) => {
   return nodes.get(id);
 };
 
+// One node per selector too, so app.js and a test asking for ".scan-or" get
+// the same object. Registering a selector directly overrides it, which is how
+// a test says which radio is checked.
+const selectors = new Map();
+const bySelector = (sel) => {
+  if (!selectors.has(sel)) selectors.set(sel, el(sel));
+  return selectors.get(sel);
+};
+
 const sandbox = {
   console,
   document: {
     getElementById: byId,
-    querySelector: el,
+    querySelector: bySelector,
     querySelectorAll: () => [],
     addEventListener() {},
     documentElement: { dataset: {} },
@@ -86,13 +95,14 @@ vm.runInContext(
 const { severityBand, bandClass, severityWord, coverageNotice,
         gateStatusLabel, countBySeverity, isHighRisk, severityRank,
         showSourceError, clearSourceError, runScan,
-        isScanning, syncScanState, updateNotice } = sandbox;
+        isScanning, syncScanState, updateNotice,
+        scanMode, isMcpMode, onScanModeChange, updateSourceType } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
-  updateNotice,
+  updateNotice, scanMode, isMcpMode, onScanModeChange, updateSourceType,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -401,6 +411,61 @@ test("an unreadable installed version is not reported as up to date", () => {
 test("no payload yields no notice rather than throwing", () => {
   assert.equal(updateNotice(null), null);
   assert.equal(updateNotice(undefined), null);
+});
+
+// --- what is being scanned -------------------------------------------------
+// skillspector reads a skill and an MCP registry differently, and the two
+// look alike as URLs, so the mode is stated rather than sniffed.
+const MODE_SEL = 'input[name="scan-mode"]:checked';
+const dropZone = sandbox.document.getElementById("drop-zone");
+const scanOr = sandbox.document.querySelector(".scan-or");
+const sourceType = sandbox.document.getElementById("source-type");
+
+function setMode(value) {
+  selectors.set(MODE_SEL, { value });
+}
+
+test("a scan is a skill scan unless something says otherwise", () => {
+  selectors.delete(MODE_SEL);
+  assert.equal(scanMode(), "skill");
+  assert.equal(isMcpMode(), false);
+});
+
+test("choosing the registry is reported as the registry", () => {
+  setMode("mcp_registry");
+  assert.equal(scanMode(), "mcp_registry");
+  assert.equal(isMcpMode(), true);
+});
+
+test("registry mode puts the .zip drop zone away", () => {
+  // A registry is a URL or a payload path; an upload cannot be one, and the
+  // upload endpoint has no way to pass the flag even if it were.
+  setMode("mcp_registry");
+  onScanModeChange();
+  assert.equal(dropZone.hidden, true);
+  assert.equal(scanOr.hidden, true);
+  assert.match(scanInput.placeholder || "", /MCP registry/);
+});
+
+test("going back to skills brings the drop zone back", () => {
+  setMode("mcp_registry");
+  onScanModeChange();
+  setMode("skill");
+  onScanModeChange();
+  assert.equal(dropZone.hidden, false);
+  assert.equal(scanOr.hidden, false);
+  assert.match(scanInput.placeholder || "", /\.zip/);
+});
+
+test("the source-type chip stays quiet for a registry", () => {
+  // It names skill sources. Calling a registry URL a "Git URL" would be
+  // worse than saying nothing at all.
+  setMode("mcp_registry");
+  sourceType.hidden = false;
+  scanInput.value = "https://registry.modelcontextprotocol.io/v0/servers";
+  updateSourceType();
+  assert.equal(sourceType.hidden, true);
+  selectors.delete(MODE_SEL);
 });
 
 // --- report ----------------------------------------------------------------

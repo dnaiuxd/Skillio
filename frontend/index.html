@@ -66,10 +66,21 @@
           <path d="M12 12 19.4 6.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
           <circle cx="12" cy="12" r="1.35" fill="currentColor" />
         </svg>
-        Scan a Skill
+        New Scan
       </h2>
+      <div class="scan-mode" role="radiogroup" aria-label="What to scan">
+        <label class="scan-mode-option">
+          <input type="radio" name="scan-mode" value="skill" checked />
+          <span>Skill</span>
+        </label>
+        <label class="scan-mode-option">
+          <input type="radio" name="scan-mode" value="mcp_registry" />
+          <span>MCP registry</span>
+        </label>
+      </div>
+
       <div class="scan-field">
-        <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip"
+        <input id="scan-input" type="text" aria-label="What to scan — Git URL, local path, or .zip"
           placeholder="Git URL, path, or .zip" aria-describedby="scan-input-error" />
         <span id="source-type" class="source-type" hidden></span>
         <p id="scan-input-error" class="field-error" role="alert" hidden></p>
@@ -132,27 +143,27 @@
 
       <section id="list-view">
         <div class="list-head">
-          <h2 class="list-title">Scanned Skills</h2>
+          <h2 class="list-title">Scan Log</h2>
           <div class="segmented" role="tablist" aria-label="Log view">
-            <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Scanned
-              Skill</button>
+            <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Current</button>
             <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
           </div>
         </div>
         <p class="list-intro">
-          Skillio runs NVIDIA's SkillSpector over an agent skill — a git URL, a
-          folder, or a <code>.zip</code> — and keeps every report it produces.
-          Instead of reading terminal output and trying to remember what you
-          decided, you get a browsable log: findings grouped by severity, a
-          re-scan flagged when it comes back different from the one you
-          approved, and an install decision recorded against each skill.
+          Skillio runs NVIDIA's SkillSpector over an agent skill — a git URL,
+          a folder, or a <code>.zip</code> — or over the MCP registry, and
+          keeps every report it produces. Instead of reading terminal output
+          and trying to remember what you decided, you get a browsable log:
+          findings grouped by severity, a re-scan flagged when it comes back
+          different from the one you approved, and an install decision
+          recorded against each one.
         </p>
         <div id="log-summary" class="log-summary" hidden></div>
         <div class="skill-table-wrap">
           <table class="skill-table">
             <thead>
               <tr>
-                <th class="col-name" scope="col">Skill</th>
+                <th class="col-name" scope="col">Target</th>
                 <th class="col-score" scope="col">Score</th>
                 <th class="col-verdict" scope="col">Verdict</th>
                 <th class="col-date" scope="col">Last scanned</th>

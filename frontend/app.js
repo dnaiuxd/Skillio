@@ -176,7 +176,36 @@ function detectSourceType(raw) {
   return { key: "other", label: "Unrecognized source" };
 }
 
+function scanMode() {
+  const checked = document.querySelector('input[name="scan-mode"]:checked');
+  return checked && checked.value ? checked.value : "skill";
+}
+
+function isMcpMode() {
+  return scanMode() === "mcp_registry";
+}
+
+// A registry is a URL or a payload path — never a .zip upload — so the drop
+// zone goes away rather than offering something the scan cannot accept.
+function onScanModeChange() {
+  const mcp = isMcpMode();
+  if (mcp && stagedFile) clearStagedFile();
+  els.dropZone.hidden = mcp || stagedFile != null;
+  els.scanOr.hidden = mcp || stagedFile != null;
+  els.scanInput.placeholder = mcp
+    ? "MCP registry URL or payload path"
+    : "Git URL, path, or .zip";
+  clearSourceError();
+  updateSourceType();
+}
+
 function updateSourceType() {
+  // The chip names skill sources. A registry URL is not one of them, and
+  // labelling it "Git URL" would be worse than saying nothing.
+  if (isMcpMode()) {
+    els.sourceType.hidden = true;
+    return;
+  }
   const t = detectSourceType(els.scanInput.value);
   // Only confirm a recognised type; stay quiet otherwise.
   if (!t || t.key === "other") {
@@ -390,6 +419,9 @@ function setScanControls(busy) {
                     els.fileClear]) {
     el.disabled = busy;
   }
+  for (const radio of document.querySelectorAll('input[name="scan-mode"]')) {
+    radio.disabled = busy;
+  }
   if (!busy) els.scanInput.disabled = stagedFile != null;
   els.scanBtn.textContent = busy ? "Scanning…" : "Scan";
 }
@@ -459,7 +491,7 @@ function renderSkillList(skills) {
   els.skillRows.innerHTML = "";
   els.emptyState.textContent = showingArchived
     ? "Nothing archived yet. Archive a scan from its detail page to move it here."
-    : "No skills scanned yet. Paste a source on the left and run a scan.";
+    : "Nothing scanned yet. Paste a source on the left and run a scan.";
   els.emptyState.hidden = skills.length > 0;
   renderLogSummary(skills);
 
@@ -482,7 +514,11 @@ function renderSkillList(skills) {
     tr.innerHTML = `
       <td>
         <button type="button" class="row-open">
-          <span class="skill-name">${escapeHtml(s.name)}</span>
+          <span class="skill-name">${escapeHtml(s.name)}</span>${
+            s.target_type === "mcp_registry"
+              ? `<span class="target-tag">MCP registry</span>`
+              : ""
+          }
           <span class="skill-source">${escapeHtml(s.source)}</span>
         </button>
       </td>
@@ -680,7 +716,11 @@ async function runScan() {
       res = await fetch(`${API}/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source, use_llm: useLlm }),
+        body: JSON.stringify({
+          source,
+          use_llm: useLlm,
+          mcp_registry: isMcpMode(),
+        }),
       });
     }
     if (!res.ok) {
@@ -1131,6 +1171,9 @@ async function deleteSkill() {
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
 els.updateCheck.addEventListener("click", checkForUpdates);
+for (const radio of document.querySelectorAll('input[name="scan-mode"]')) {
+  radio.addEventListener("change", onScanModeChange);
+}
 els.scanInput.addEventListener("input", () => {
   clearSourceError();
   updateSourceType();

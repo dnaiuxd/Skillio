@@ -1,8 +1,8 @@
 # Skillio
 
 A local dashboard for [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector):
-scan an agent skill, browse a history of everything you've scanned, and
-approve or reject each one before you install it.
+scan an agent skill or the MCP registry, browse a history of everything
+you've scanned, and approve or reject each one before you install it.
 
 It's a thin wrapper — all the actual security analysis is done by the
 `skillspector` CLI. This app just gives you a browsable log instead of
@@ -140,6 +140,13 @@ start. Open **http://localhost:8787**.
 
 ## Using it
 
+- **Skill / MCP registry** — which of the two things SkillSpector reads.
+  A registry URL and a skill URL are not distinguishable by shape, so the
+  choice is stated rather than guessed, and it is passed straight through
+  as `--mcp-registry`. SkillSpector accepts only the official registry
+  endpoint — `https://registry.modelcontextprotocol.io/v0/servers`,
+  exactly, without query parameters — and rejects anything else. Registry
+  mode hides the `.zip` drop zone, which cannot be a registry.
 - **Scan bar** — paste a git URL, a local path, or a `.zip` (`~` is
   expanded), or drop a `.zip` onto the upload area / click it to browse.
   Then hit Scan. Re-scanning the same source updates its existing row
@@ -155,7 +162,7 @@ start. Open **http://localhost:8787**.
   matching its `_RISK_SEVERITY_BANDS`: LOW 0–20, MEDIUM 21–50, HIGH
   51–80, CRITICAL 81–100. HIGH and CRITICAL share the red treatment
   because both mean DO NOT INSTALL, but each still shows its own name.
-  The **Scanned Skill / Archived** toggle switches which set you're
+  The **Current / Archived** toggle switches which set you're
   looking at.
 - **Detail view** — click any row for the full findings list, grouped by
   severity, plus the raw error if a scan failed (e.g. skillspector not
@@ -234,7 +241,10 @@ start. Open **http://localhost:8787**.
   the tab. A re-scan keeps the previous score on show, dimmed, until the
   new one lands; the old answer is still the best one available until
   then. One scan runs at a time — a second request gets a 409 rather than
-  queueing — and a scan still times out after 5 minutes. If the server
+  queueing. A skill scan times out after 5 minutes; a registry scan gets
+  30, because the official registry is hundreds of servers read in one
+  pass and measured past 5 minutes on its own, while a *skill* still
+  running at 5 minutes is stuck. If the server
   stops mid-scan, that row is closed out on the next start and says so,
   instead of spinning forever with nothing behind it.
 
