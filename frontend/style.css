@@ -330,7 +330,7 @@ button {
   content: "·";
   /* Explicit on both sides rather than spaces inside the content string,
      which collapse unpredictably next to a flex boundary. */
-  margin: 0 0.75em;
+  margin: 0 1.1em;
 }
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
@@ -496,13 +496,17 @@ main {
   color: var(--ink-soft);
 }
 
-/* Underline on hover only. Safe here where it wouldn't be inside prose:
-   the link is the entire content of its line, so there's no surrounding
-   text it could be confused with (WCAG 1.4.1 is about telling a link
-   apart from the text around it). The focus ring below still marks it
+/* Takes the credit line's own colour so it sits with the version rather
+   than pulling against it, and underlines on hover.
+   Note this is weaker than it was: the justification for hover-only used to
+   be that the link was the whole line, with no neighbouring text to confuse
+   it with. It now sits beside "Skillio vX.Y.Z" in the same colour, so until
+   you hover there is nothing marking it as a link (WCAG 1.4.1). A permanent
+   underline would settle it without touching the colour.
+   The focus ring below still marks it
    for keyboard users, who never see :hover. */
 .credit-link {
-  color: var(--link);
+  color: inherit;
   text-decoration: none;
 }
 
