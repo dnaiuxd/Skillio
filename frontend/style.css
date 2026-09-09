@@ -1743,17 +1743,11 @@ main {
     border-bottom: 1px solid var(--rail-border);
   }
 
+  /* Full width. The 460px cap kept the form at rail proportions while the
+     rail itself had become a full-width band, leaving most of an iPad's
+     width empty beside it. */
   .scan-sidebar > * {
     width: 100%;
-    max-width: 460px;
-  }
-
-  /* The base rule centres this on the flex line, which at this breakpoint is
-     the full sidebar width — so "or" drifted off to the right of the 460px
-     column it is supposed to divide. Flush left like its siblings; the
-     text-align on the base rule still centres it inside that column. */
-  .scan-or {
-    align-self: flex-start;
   }
 
   .rail-credit { display: none; }
