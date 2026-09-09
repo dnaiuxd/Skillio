@@ -13,6 +13,7 @@ const els = {
   fileClear: document.getElementById("file-clear"),
   scanBtn: document.getElementById("scan-btn"),
   scanStatus: document.getElementById("scan-status"),
+  scanInputError: document.getElementById("scan-input-error"),
   useLlm: document.getElementById("use-llm"),
   llmInfoBtn: document.getElementById("llm-info-btn"),
   llmInfo: document.getElementById("llm-info"),
@@ -199,7 +200,7 @@ function stageFile(file) {
   els.scanOr.hidden = true;
   els.scanInput.value = "";
   els.scanInput.disabled = true;
-  els.scanInput.removeAttribute("aria-invalid");
+  clearSourceError();
   updateSourceType();
   hideScanStatus();
 }
@@ -227,10 +228,18 @@ function hideScanStatus() {
 }
 
 // Clicking Scan with nothing entered used to return silently, which reads as
-// a broken button. Focus goes back to the input because that is where the fix
-// is, and aria-invalid gives the state a non-colour cue for the border.
+// a broken button. This is field validation, not action feedback, so it lands
+// beside the input rather than in #scan-status down by the button — that
+// region stays for scan progress and upload errors.
+//
+// role="alert" rather than focus alone: pressing Enter inside the empty input
+// leaves focus where it already was, so nothing would re-announce. Focus still
+// moves on the click path, because that is where the fix has to be typed.
 function showSourceError(msg) {
-  showScanStatus(msg, true);
+  // Reveal before writing — an alert mutated while display:none is usually
+  // never announced.
+  els.scanInputError.hidden = false;
+  els.scanInputError.textContent = msg;
   els.scanInput.setAttribute("aria-invalid", "true");
   els.scanInput.focus();
 }
@@ -238,7 +247,8 @@ function showSourceError(msg) {
 function clearSourceError() {
   if (!els.scanInput.hasAttribute("aria-invalid")) return;
   els.scanInput.removeAttribute("aria-invalid");
-  hideScanStatus();
+  els.scanInputError.hidden = true;
+  els.scanInputError.textContent = "";
 }
 
 function fmtDate(ts) {

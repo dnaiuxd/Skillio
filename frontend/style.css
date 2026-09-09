@@ -447,6 +447,18 @@ main {
   color: var(--ink);
 }
 
+/* Sits under #scan-input as its aria-describedby target. Body face, not the
+   mono of .scan-status: that mono is right for a stderr dump and wrong for a
+   sentence — the same reason .detail-error--warn opts out of it. The sentence
+   carries the meaning; the red border on the input is the redundant cue.
+   --critical on the rail ground: 5.85:1 light, 6.13:1 dark, both clear AA. */
+.field-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--critical);
+}
+
 .source-type {
   align-self: flex-start;
   display: inline-flex;

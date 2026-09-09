@@ -66,8 +66,9 @@
       </h2>
       <div class="scan-field">
         <input id="scan-input" type="text" aria-label="Skill source to scan — Git URL, local path, or .zip"
-          placeholder="Git URL, path, or .zip" />
+          placeholder="Git URL, path, or .zip" aria-describedby="scan-input-error" />
         <span id="source-type" class="source-type" hidden></span>
+        <p id="scan-input-error" class="field-error" role="alert" hidden></p>
       </div>
 
       <div class="scan-or" aria-hidden="true">or</div>
