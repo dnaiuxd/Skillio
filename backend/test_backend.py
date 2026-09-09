@@ -8,7 +8,9 @@ Every case here is a bug this app actually shipped, or the boundary that
 bug sat on. They are cheap because none of this touches the network, the
 database or the skillspector binary.
 """
+import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -451,6 +453,111 @@ class SkillioVersion(unittest.TestCase):
         so that key going missing would blank the footer, not just change it."""
         with mock.patch.object(app.shutil, "which", return_value=None):
             self.assertEqual(app.health()["skillio_version"], app.SKILLIO_VERSION)
+
+
+class GateSurvivesTrimming(unittest.TestCase):
+    """A gate decision records "I reviewed THIS report". Trimming throws away
+    97k of a registry's findings, so a fingerprint taken after the trim is
+    blind to every change past the first 1,000 — and an approval could outlive
+    the report it was made about, which is the one thing the gate prevents."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self._patch = mock.patch.object(storage, "DB_PATH", Path(self.tmp) / "t.db")
+        self._patch.start()
+        storage.init_db()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    @staticmethod
+    def _registry_report(tail_id):
+        """A capped-size registry report whose only variation is past the cap."""
+        findings = [{"id": f"F{i}", "severity": "low"}
+                    for i in range(app.MCP_MAX_FINDINGS)]
+        findings.append({"id": tail_id, "severity": "critical"})
+        return {"mcp_registry": True, "risk_score": 100,
+                "verdict": "DO_NOT_INSTALL", "findings": findings}
+
+    def _run_with(self, report):
+        class Proc:
+            returncode = 0
+            stderr = ""
+            stdout = json.dumps(report)
+
+        with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", lambda cmd, **kw: Proc()):
+            app._claim_scan_slot()
+            storage.begin_scan("REG", "MCP Registry", target_type="mcp_registry")
+            app._scan_worker("REG", "MCP Registry", "REG",
+                             use_llm=False, mcp_registry=True)
+        conn = storage.get_conn()
+        fp = conn.execute(
+            "SELECT report_fingerprint FROM skills WHERE source = 'REG'"
+        ).fetchone()[0]
+        conn.close()
+        return fp
+
+    def test_a_change_past_the_cap_still_changes_the_fingerprint(self):
+        first = self._run_with(self._registry_report("TAIL-A"))
+        second = self._run_with(self._registry_report("TAIL-B"))
+        self.assertIsNotNone(first)
+        self.assertNotEqual(
+            first, second,
+            "fingerprint was taken after trimming, so the gate is blind past "
+            "the first %d findings" % app.MCP_MAX_FINDINGS,
+        )
+
+    def test_an_unchanged_registry_keeps_its_gate(self):
+        """The other half: re-scanning something identical must NOT reset a
+        decision, or checking for drift would cost you your approval."""
+        self.assertEqual(
+            self._run_with(self._registry_report("TAIL-A")),
+            self._run_with(self._registry_report("TAIL-A")),
+        )
+
+    def test_the_row_still_reports_as_a_registry(self):
+        """upsert_scan's INSERT branch fires when the row was deleted from the
+        log mid-scan. Without target_type there, a finished registry scan
+        re-lands in the log presented as a skill."""
+        self._run_with(self._registry_report("TAIL-A"))
+        conn = storage.get_conn()
+        conn.execute("DELETE FROM skills WHERE source = 'REG'")
+        conn.commit()
+        conn.close()
+        self._run_with(self._registry_report("TAIL-A"))
+        self.assertEqual(storage.find_by_source("REG")["target_type"], "mcp_registry")
+
+
+class ReleaseScript(unittest.TestCase):
+    """release.sh writes a version into source, commits it and tags it. The
+    argument check is all that stands between a typo and a pushed tag — and
+    the test gate cannot help, because it runs against the tree BEFORE the
+    bump, so the tests asserting on SKILLIO_VERSION have already passed."""
+
+    SCRIPT = Path(__file__).resolve().parent.parent / "release.sh"
+
+    def _run(self, arg):
+        return subprocess.run(
+            ["bash", str(self.SCRIPT), arg, "--dry-run"],
+            capture_output=True, text=True, timeout=60,
+        )
+
+    def test_malformed_versions_are_refused(self):
+        # Each of these was accepted by the original [0-9]*.[0-9]*.[0-9]* glob,
+        # which anchors neither the field count nor leading zeros.
+        for bad in ("1.4.2.7", "01.2.3", "1.2.x", "1.2", "v1.2.3", ""):
+            with self.subTest(version=bad):
+                proc = self._run(bad)
+                self.assertNotEqual(proc.returncode, 0, f"{bad!r} was accepted")
+                self.assertIn("error:", proc.stderr)
+
+    def test_a_wellformed_version_gets_past_the_argument_check(self):
+        """It may still stop at a git guard — that is fine and not what this
+        asserts. What matters is that it is not rejected as malformed."""
+        proc = self._run("1.4.2")
+        self.assertNotIn("MAJOR.MINOR.PATCH version", proc.stderr)
 
 
 if __name__ == "__main__":

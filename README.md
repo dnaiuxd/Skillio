@@ -166,6 +166,9 @@ start. Open **http://localhost:8787**.
   about 0.16 MB. The true count is kept and the detail page says how many
   were left out, because a short findings list must never be mistaken for
   a clean one. The score is SkillSpector's and reflects all of them.
+  The gate fingerprint is taken *before* the trim, over the full report —
+  otherwise a registry could be rewritten past the 1,000th finding, hash
+  identical, and keep an approval you never gave it.
 - **Skill / MCP Registry** — which of the two things SkillSpector reads.
   A registry URL and a skill URL are not distinguishable by shape, so the
   choice is stated rather than guessed, and it is passed straight through
@@ -331,9 +334,13 @@ keep in sync by hand.
 ./release.sh minor --dry-run
 ```
 
-It refuses to run off `main`, refuses on a dirty tree, refuses if the tag
-already exists, and runs both suites before it changes anything — a tag
-is a claim that the commit works. Then it rewrites the one version line,
+It validates the version first, so a typo is rejected on its own terms
+rather than behind a complaint about your tree. Only a strict
+`MAJOR.MINOR.PATCH` is accepted — `1.4.2.7` and `01.2.3` are refused, and
+the test gate cannot catch those for you because it runs against the tree
+*before* the bump. Then it refuses to run off `main`, refuses on a dirty
+tree, refuses if the tag already exists, and runs both suites — a tag is a
+claim that the commit works. Finally it rewrites the one version line,
 commits it as `Release vX.Y.Z`, and adds an annotated tag.
 
 It does not push. The last line prints the command:

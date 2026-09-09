@@ -156,6 +156,7 @@ def upsert_scan(
     report: Optional[dict],
     error: Optional[str] = None,
     fingerprint: Optional[str] = None,
+    target_type: str = "skill",
 ) -> dict[str, Any]:
     now = time.time()
     report_json = json.dumps(report) if report is not None else None
@@ -200,10 +201,11 @@ def upsert_scan(
             """
             INSERT INTO skills (source, name, first_scanned, last_scanned,
                                  score, verdict, status, report_json, error,
-                                 report_fingerprint, scan_state)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'done')
+                                 report_fingerprint, scan_state, target_type)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'done', ?)
             """,
-            (source, name, now, now, score, verdict, report_json, error, fingerprint),
+            (source, name, now, now, score, verdict, report_json, error,
+             fingerprint, target_type),
         )
         skill_id = cur.lastrowid
     conn.commit()

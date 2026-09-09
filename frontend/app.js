@@ -198,6 +198,15 @@ function onScanModeChange() {
   els.scanInput.placeholder = mcp
     ? "MCP Registry URL or payload path"
     : "Git URL, path, or .zip";
+  // The accessible name outranks the placeholder for a screen reader, so
+  // leaving it fixed announces "Git URL, local path, or .zip" in registry
+  // mode — the one thing the field cannot take there.
+  els.scanInput.setAttribute(
+    "aria-label",
+    mcp
+      ? "What to scan — MCP Registry URL or payload path"
+      : "What to scan — Git URL, local path, or .zip"
+  );
   clearSourceError();
   updateSourceType();
 }
@@ -345,10 +354,16 @@ async function checkForUpdates() {
     // Only the kind with something to do earns the weight of a card.
     els.updateResult.className = `update-result update-result--${notice.kind}`;
 
+    // Headline and link share a row: "vX is available — Release notes" is one
+    // statement, and giving the link its own line made a two-fact card read as
+    // three stacked ones.
+    const headRow = document.createElement("div");
+    headRow.className = "update-headline-row";
     const head = document.createElement("span");
     head.className = "update-headline";
     head.textContent = notice.text;
-    els.updateResult.append(head);
+    headRow.append(head);
+    els.updateResult.append(headRow);
 
     if (notice.url) {
       // Built with DOM calls, not innerHTML: escapeHtml is for text nodes and
@@ -359,7 +374,7 @@ async function checkForUpdates() {
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.textContent = "Release notes ↗";
-      els.updateResult.append(a);
+      headRow.append(a);
     }
     if (notice.command) {
       const label = document.createElement("span");
@@ -1046,10 +1061,14 @@ function findingLocations(f) {
 // anyone reads, and the whole report was 196MB. Saying so matters: this app's
 // standing rule is that a short findings list must never be mistaken for a
 // clean one.
-function truncationNotice(report) {
+// `shown` is how many rows the page actually renders — the DEDUPED count.
+// It is passed in rather than re-derived here because the two differ:
+// dedupeFindings collapses repeats of one finding_id into a single row, so a
+// capped 1,000-finding report can render 40. "Showing 1,000" above 40 rows is
+// its own kind of lie, and this function exists to stop exactly that.
+function truncationNotice(report, shown) {
   const total = report && report.findings_total;
-  const shown = report && Array.isArray(report.findings) ? report.findings.length : 0;
-  if (!total || total <= shown) return null;
+  if (!total || typeof shown !== "number" || total <= shown) return null;
   return (
     `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} findings. ` +
     `The rest were left out to keep the report a workable size — this is not ` +
@@ -1064,7 +1083,7 @@ function renderFindings(report) {
 
   renderSeverityBreakdown(findings);
 
-  const truncated = truncationNotice(report);
+  const truncated = truncationNotice(report, findings.length);
   if (truncated) {
     const p = document.createElement("p");
     p.className = "findings-truncated";
@@ -1073,7 +1092,13 @@ function renderFindings(report) {
   }
 
   if (findings.length === 0) {
-    els.findingsList.innerHTML = `<div class="no-findings">No findings in this report.</div>`;
+    // appendChild, not innerHTML: an assignment here wipes the truncation
+    // warning appended just above it, and a capped report would then render
+    // as "No findings" — the precise failure that warning exists to prevent.
+    const empty = document.createElement("div");
+    empty.className = "no-findings";
+    empty.textContent = "No findings in this report.";
+    els.findingsList.appendChild(empty);
     return;
   }
 
@@ -1289,3 +1314,7 @@ window.addEventListener("drop", (e) => {
 
 checkHealth();
 loadSkills();
+// Not only on change: a reload (or a bfcache restore) brings the checked
+// radio back without firing `change`, which left the drop zone and the
+// placeholder describing skill mode while the POST carried mcp_registry: true.
+onScanModeChange();

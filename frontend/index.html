@@ -69,12 +69,15 @@
         New Scan
       </h2>
       <div class="scan-mode" role="radiogroup" aria-label="What to scan">
+        <!-- visually-hidden, not display:none: the radio is the real control
+             and must stay in the tab order and on the accessibility tree. The
+             span beside it is only its skin. -->
         <label class="scan-mode-option">
-          <input type="radio" name="scan-mode" value="skill" checked />
+          <input class="visually-hidden" type="radio" name="scan-mode" value="skill" checked />
           <span>Skill</span>
         </label>
         <label class="scan-mode-option">
-          <input type="radio" name="scan-mode" value="mcp_registry" />
+          <input class="visually-hidden" type="radio" name="scan-mode" value="mcp_registry" />
           <span>MCP Registry</span>
         </label>
       </div>

@@ -30,18 +30,6 @@ for arg in "$@"; do
   [ "$arg" = "--dry-run" ] && DRY_RUN=1
 done
 
-# --- refuse to release from a state you'd regret ---------------------------
-git rev-parse --git-dir >/dev/null 2>&1 || fail "not a git repository"
-
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-[ "$BRANCH" = "main" ] || fail "on branch '$BRANCH' — release from main"
-
-# A dirty tree means the tag would not describe what you tested. The version
-# bump itself is the only change this script expects to commit.
-if [ -n "$(git status --porcelain)" ]; then
-  fail "working tree has uncommitted changes — commit or stash them first"
-fi
-
 # --- read the current version ----------------------------------------------
 CURRENT="$(sed -n 's/^SKILLIO_VERSION = "\(.*\)"$/\1/p' "$APP")"
 [ -n "$CURRENT" ] || fail "could not find SKILLIO_VERSION in $APP"
@@ -57,9 +45,30 @@ case "$BUMP" in
   major) NEXT="$((MAJOR + 1)).0.0" ;;
   minor) NEXT="$MAJOR.$((MINOR + 1)).0" ;;
   patch) NEXT="$MAJOR.$MINOR.$((PATCH + 1))" ;;
-  [0-9]*.[0-9]*.[0-9]*) NEXT="$BUMP" ;;
-  *) fail "'$BUMP' is not patch, minor, major, or a MAJOR.MINOR.PATCH version" ;;
+  *) NEXT="$BUMP" ;;
 esac
+
+# Validate what is about to be written, not what was typed. A glob like
+# [0-9]*.[0-9]*.[0-9]* anchors neither the field count nor leading zeros, so
+# "1.4.2.7" and "01.2.3" both passed it and got committed and tagged. The
+# test gate cannot save us here either: it runs against the tree BEFORE the
+# bump, so the very tests that assert on SKILLIO_VERSION have already passed
+# by the time a bad version is written.
+if ! printf '%s' "$NEXT" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+  fail "'$BUMP' is not patch, minor, major, or a MAJOR.MINOR.PATCH version"
+fi
+
+# --- refuse to release from a state you'd regret ---------------------------
+git rev-parse --git-dir >/dev/null 2>&1 || fail "not a git repository"
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+[ "$BRANCH" = "main" ] || fail "on branch '$BRANCH' — release from main"
+
+# A dirty tree means the tag would not describe what you tested. The version
+# bump itself is the only change this script expects to commit.
+if [ -n "$(git status --porcelain)" ]; then
+  fail "working tree has uncommitted changes — commit or stash them first"
+fi
 
 TAG="v$NEXT"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && fail "tag $TAG already exists"
@@ -90,7 +99,13 @@ say "tests passed"
 
 # --- bump, commit, tag -----------------------------------------------------
 # Anchored to the whole line so this can only ever rewrite the declaration.
-sed -i '' "s/^SKILLIO_VERSION = \"$CURRENT\"\$/SKILLIO_VERSION = \"$NEXT\"/" "$APP"
+# In-place editing is spelled differently by BSD and GNU sed, and getting it
+# wrong fails between the test gate and the commit — the worst place for it.
+if sed --version >/dev/null 2>&1; then
+  sed -i "s/^SKILLIO_VERSION = \"$CURRENT\"\$/SKILLIO_VERSION = \"$NEXT\"/" "$APP"
+else
+  sed -i '' "s/^SKILLIO_VERSION = \"$CURRENT\"\$/SKILLIO_VERSION = \"$NEXT\"/" "$APP"
+fi
 
 if [ -z "$(git status --porcelain -- "$APP")" ]; then
   fail "the version line in $APP did not change — nothing to release"

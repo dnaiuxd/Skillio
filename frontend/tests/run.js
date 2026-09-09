@@ -506,16 +506,26 @@ test("a registry report raises no coverage warning of its own", () => {
 test("a capped findings list says how much is missing", () => {
   // The standing rule in this app: a short list must never be mistaken for a
   // clean one. A cap is exactly that hazard.
-  const n = truncationNotice({ findings: new Array(1000).fill({}), findings_total: 98029 });
+  const n = truncationNotice({ findings_total: 98029 }, 1000);
   assert.match(n, /1,000/);
   assert.match(n, /98,029/);
   assert.match(n, /not\s+the full list/);
 });
 
+test("it counts the rows on the page, not the raw list", () => {
+  // dedupeFindings collapses repeats of one finding_id into a single row, so
+  // the stored list and the rendered list are different lengths. Quoting the
+  // stored one over 40 visible rows would be its own small lie.
+  const n = truncationNotice({ findings: new Array(1000).fill({}), findings_total: 98029 }, 40);
+  assert.match(n, /Showing 40 of 98,029/);
+});
+
 test("an uncapped list says nothing", () => {
-  assert.equal(truncationNotice({ findings: [{}, {}] }), null);
-  assert.equal(truncationNotice({ findings: [{}, {}], findings_total: 2 }), null);
-  assert.equal(truncationNotice(null), null);
+  assert.equal(truncationNotice({ findings: [{}, {}] }, 2), null);
+  assert.equal(truncationNotice({ findings: [{}, {}], findings_total: 2 }, 2), null);
+  assert.equal(truncationNotice(null, 0), null);
+  // No count means nothing trustworthy to claim, so claim nothing.
+  assert.equal(truncationNotice({ findings_total: 98029 }, undefined), null);
 });
 
 // --- the markup app.js assumes ---------------------------------------------
@@ -548,15 +558,16 @@ test("the About dialog is a real <dialog> with its trigger and close", () => {
   assert.match(html, new RegExp(`id="${labelledBy[1]}"`));
 });
 
-test("the credit link is marked as a link without hovering", () => {
-  // It sits beside "Skillio vX.Y.Z" in the same colour, so a hover-only
-  // underline leaves colour as the only thing telling them apart (WCAG
-  // 1.4.1) — and hover never fires on touch at all. Easy to undo by
-  // accident while tidying the rule, hence this.
+test("the credit link's hover-only underline stays documented", () => {
+  // Hover-only means colour alone marks it as a link at rest (WCAG 1.4.1),
+  // and :hover never fires on touch. That is the owner's deliberate call on
+  // their own byline — but a deliberate deviation is only deliberate while
+  // the reasoning travels with it, so this fails if the note is dropped.
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
-  const rule = css.match(/\.credit-link\s*\{([^}]*)\}/);
-  assert.ok(rule, "no .credit-link rule in style.css");
-  assert.match(rule[1], /text-decoration:\s*underline/);
+  const at = css.indexOf(".credit-link {");
+  assert.notEqual(at, -1, "no .credit-link rule in style.css");
+  assert.match(css.slice(Math.max(0, at - 900), at), /KNOWN, DELIBERATE DEVIATION/);
+  assert.match(css.slice(Math.max(0, at - 900), at), /1\.4\.1/);
 });
 
 test("the log heading and the registry label read as intended", () => {
@@ -564,6 +575,37 @@ test("the log heading and the registry label read as intended", () => {
   // "MCP Registry" is a proper noun; a lowercase r is a typo, not a style.
   assert.equal(/MCP registry/.test(html), false);
   assert.equal(/MCP registry/.test(appSource), false);
+});
+
+test("the scan input's accessible name follows the mode", () => {
+  // The accessible name outranks the placeholder for a screen reader, so a
+  // stale one announces the exact input the field cannot take.
+  const radio = sandbox.document.querySelector('input[name="scan-mode"]:checked');
+
+  radio.value = "mcp_registry";
+  onScanModeChange();
+  assert.match(scanInput.getAttribute("aria-label"), /MCP Registry/);
+
+  radio.value = "skill";
+  onScanModeChange();
+  assert.match(scanInput.getAttribute("aria-label"), /Git URL/);
+  assert.equal(/MCP Registry/.test(scanInput.getAttribute("aria-label")), false);
+});
+
+test("the mode is synced at boot, not only on change", () => {
+  // A reload restores the checked radio without firing `change`, which left
+  // the drop zone visible while the POST carried mcp_registry: true.
+  assert.match(appSource, /^onScanModeChange\(\);$/m);
+});
+
+test("an empty findings list cannot wipe the truncation notice", () => {
+  // renderFindings appends the notice and then, if nothing survived, used to
+  // assign innerHTML — deleting the warning and rendering a capped report as
+  // clean. The no-findings branch must build a node, not clobber the box.
+  const body = appSource.slice(appSource.indexOf("function renderFindings"));
+  const branch = body.slice(body.indexOf("findings.length === 0"), body.indexOf("const sorted"));
+  assert.equal(/innerHTML\s*=/.test(branch), false, "no-findings branch still assigns innerHTML");
+  assert.match(branch, /appendChild/);
 });
 
 // --- report ----------------------------------------------------------------

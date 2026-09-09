@@ -406,6 +406,12 @@ def _scan_worker(
     try:
         try:
             report = _run_scan(target, use_llm, mcp_registry)
+            # Fingerprint what was scanned, not what gets stored. Trimming
+            # throws away 97k of a registry's findings, and a fingerprint taken
+            # after that is blind to every change past the first 1,000 — so a
+            # registry could be rewritten underneath an approved gate and still
+            # hash identical, which is the one thing the gate exists to stop.
+            fingerprint = _report_fingerprint(report)
             if mcp_registry:
                 report = _trim_registry_report(report)
         except RuntimeError as exc:
@@ -417,7 +423,8 @@ def _scan_worker(
         score, verdict = _extract_score_and_verdict(report)
         storage.upsert_scan(
             source=source, name=name, score=score, verdict=verdict,
-            report=report, error=None, fingerprint=_report_fingerprint(report),
+            report=report, error=None, fingerprint=fingerprint,
+            target_type="mcp_registry" if mcp_registry else "skill",
         )
     except Exception as exc:  # noqa: BLE001 - the row must never stay 'running'
         storage.upsert_scan(
@@ -457,7 +464,9 @@ def scan(req: ScanRequest) -> dict:
     if not source:
         raise HTTPException(status_code=400, detail="source is required")
 
-    name = _derive_name(source)
+    # The registry's URL ends in "/v0/servers", so _derive_name would file
+    # every registry scan in the log under the bare word "servers".
+    name = "MCP Registry" if req.mcp_registry else _derive_name(source)
 
     if not _claim_scan_slot():
         raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)

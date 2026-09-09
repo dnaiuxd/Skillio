@@ -278,7 +278,16 @@ button {
 
 .update-result .update-link {
   color: var(--link);
-  margin-left: 6px;
+}
+
+/* "vX.Y.Z is available" and its link are one statement, so they share a line.
+   Baseline-aligned rather than centred: they are running text of two sizes,
+   and wrap is allowed for a narrow rail. */
+.update-headline-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
 }
 
 /* An available update is the one state with something to do, so it gets the
@@ -299,10 +308,6 @@ button {
 
 .update-result--available .update-headline {
   font-weight: 600;
-}
-
-.update-result--available .update-link {
-  margin-left: 0;
 }
 
 .update-command-label {
@@ -512,22 +517,22 @@ main {
 }
 
 /* Takes the credit line's own colour so it sits with the version rather than
-   pulling against it. That is exactly why the underline has to be permanent:
-   it sits beside "Skillio vX.Y.Z" in the same colour, so with a hover-only
-   underline there was nothing at rest distinguishing link from plain text —
-   colour alone, which is what WCAG 1.4.1 rules out. Hover-only also never
-   fires on touch, where most of the reach for a footer credit is.
-   The underline marks it; hover then darkens to full ink so there is still a
-   distinct hover state, and the focus ring below covers keyboard users, who
-   never see :hover at all. */
+   pulling against it, and reveals its underline on hover.
+   KNOWN, DELIBERATE DEVIATION — do not "fix" this without asking. Sitting
+   beside "Skillio vX.Y.Z" in the same colour with no underline at rest means
+   colour is the only thing marking it as a link, which is what WCAG 1.4.1
+   rules out, and :hover never fires on touch at all. A permanent underline
+   was tried and rejected on visual grounds; this is the owner's call on their
+   own byline, not an oversight. The focus ring below still marks it for
+   keyboard users, and the target is the full 44px line. */
 .credit-link {
   color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
 }
 
 .credit-link:hover {
-  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .credit-link:focus-visible {
@@ -592,8 +597,14 @@ main {
   color: var(--ink);
 }
 
+/* Literal fallback, not just the token: ::backdrop only inherits custom
+   properties from its originating element since Chrome 122 / Safari 17.4.
+   Below that --scrim is unset here, var() is invalid at computed-value time,
+   and the property lands on `unset` -> transparent — which also throws away
+   the UA's own default backdrop. The modal would then float over a fully
+   legible page with nothing separating the two. */
 .about-dialog::backdrop {
-  background: var(--scrim);
+  background: var(--scrim, rgb(0 0 0 / 0.45));
 }
 
 .about-dialog-body {
@@ -626,71 +637,6 @@ main {
 
 .about-dialog-close {
   margin-top: 10px;
-}
-
-/* Which of the two things skillspector reads. Real radios under a segmented
-   skin rather than tab buttons: this is part of the form, not navigation, and
-   a registry URL is indistinguishable from a skill URL by shape — so the
-   choice has to be stated, not guessed. Borrows .segmented's look. */
-.scan-mode {
-  display: inline-flex;
-  align-self: flex-start;
-  gap: 2px;
-  padding: 3px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-}
-
-.scan-mode-option {
-  display: inline-flex;
-}
-
-/* Clipped, not hidden: display:none would take it out of the tab order and
-   off the accessibility tree, and the radio is the actual control. */
-.scan-mode-option input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-.scan-mode-option span {
-  min-height: 44px;
-  padding: 8px 16px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  font-family: var(--font-heading);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-
-.scan-mode-option input:checked + span {
-  background: var(--ink);
-  color: var(--surface);
-}
-
-.scan-mode-option input:not(:checked) + span:hover {
-  color: var(--ink);
-}
-
-/* The ring belongs on the skin, since the radio itself is clipped. */
-.scan-mode-option input:focus-visible + span {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-.scan-mode-option input:disabled + span {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .scan-field {
@@ -1162,7 +1108,16 @@ main {
 
 /* ---------- Log / Archived tabs ---------- */
 
-.segmented {
+/* One pill group, driven two ways. The log's Current/Archived pair is a
+   tablist of buttons; the Skill/MCP Registry pair is real radios — which of
+   the two things skillspector reads is part of the form, not navigation, and
+   a registry URL is indistinguishable from a skill URL by shape, so the
+   choice has to be stated rather than guessed. They must LOOK identical, so
+   they share these rules instead of each carrying a copy: the copy had
+   already drifted to 16px horizontal padding against 18px, putting two pill
+   groups on screen at different widths for the same label. */
+.segmented,
+.scan-mode {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
@@ -1171,7 +1126,13 @@ main {
   border-radius: 999px;
 }
 
-.segment {
+/* The rail is a stretch column; a two-option pill must not fill it. */
+.scan-mode { align-self: flex-start; }
+
+.scan-mode-option { display: inline-flex; }
+
+.segment,
+.scan-mode-option span {
   min-height: 44px;
   padding: 8px 18px;
   display: inline-flex;
@@ -1185,18 +1146,31 @@ main {
   font-weight: 600;
 }
 
-.segment[aria-selected="true"] {
+/* The span is only a skin — the clipped radio behind it is the real control,
+   and the <label> gives it the click. */
+.scan-mode-option span { cursor: pointer; }
+
+.segment[aria-selected="true"],
+.scan-mode-option input:checked + span {
   background: var(--ink);
   color: var(--surface);
 }
 
-.segment:not([aria-selected="true"]):hover {
+.segment:not([aria-selected="true"]):hover,
+.scan-mode-option input:not(:checked) + span:hover {
   color: var(--ink);
 }
 
-.segment:focus-visible {
+/* The ring goes on the skin, since the radio itself is clipped. */
+.segment:focus-visible,
+.scan-mode-option input:focus-visible + span {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
+}
+
+.scan-mode-option input:disabled + span {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- Log summary (list view) ---------- */
@@ -1666,26 +1640,27 @@ main {
   white-space: pre-wrap;
 }
 
-/* A caveat about the scan, not a failure of it. Mono is right for a stderr
-   dump but wrong for prose, so notices read in the body face. */
-.detail-error--warn {
-  border-color: var(--medium);
+/* A caveat about the scan, not a failure of it — and the truncation notice
+   says the same kind of thing about the same page, so the two share one
+   treatment rather than each keeping a copy. They had already drifted to
+   12px against 14px padding, rendering two notices of identical meaning at
+   different heights. Mono is right for a stderr dump but wrong for prose, so
+   both read in the body face.
+   .detail-error's white-space: pre-wrap is deliberately left alone here —
+   coverageNotice builds its line breaks with \n. */
+.detail-error--warn,
+.findings-truncated {
+  padding: 14px 16px;
+  border: 1px solid var(--medium);
+  border-radius: 20px;
   color: var(--medium);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   line-height: 1.5;
 }
 
-/* Same amber as the incomplete-scan notice, and for the same reason: it is a
-   caveat about what you are looking at, not a finding in its own right. */
 .findings-truncated {
   margin: 0 0 16px;
-  padding: 12px 16px;
-  border: 1px solid var(--medium);
-  border-radius: 20px;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-  color: var(--medium);
 }
 
 /* ---------- Findings by severity (bar chart) ---------- */
