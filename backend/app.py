@@ -373,6 +373,27 @@ def _release_scan_slot() -> None:
 SCAN_BUSY_DETAIL = "A scan is already running. Wait for it to finish."
 
 
+# A registry report is not a skill report's size. The live official registry
+# returned ~196MB, of which ~180MB is `servers` and `snapshots` — per-server
+# payload this app never renders, which would go into SQLite and back out of
+# /api/skills on every poll. Findings are shown, but 98k of them is not a page
+# anyone can read, so they are capped and the true total recorded.
+MCP_REPORT_DROP_KEYS = ("servers", "snapshots")
+MCP_MAX_FINDINGS = 1000
+
+
+def _trim_registry_report(report: dict) -> dict:
+    """Keep what the UI actually shows. Only ever applied to registry scans."""
+    if not isinstance(report, dict):
+        return report
+    trimmed = {k: v for k, v in report.items() if k not in MCP_REPORT_DROP_KEYS}
+    findings = trimmed.get("findings")
+    if isinstance(findings, list) and len(findings) > MCP_MAX_FINDINGS:
+        trimmed["findings_total"] = len(findings)
+        trimmed["findings"] = findings[:MCP_MAX_FINDINGS]
+    return trimmed
+
+
 def _scan_worker(
     source: str,
     name: str,
@@ -385,6 +406,8 @@ def _scan_worker(
     try:
         try:
             report = _run_scan(target, use_llm, mcp_registry)
+            if mcp_registry:
+                report = _trim_registry_report(report)
         except RuntimeError as exc:
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,

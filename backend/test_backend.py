@@ -18,7 +18,7 @@ import app
 import storage
 from app import (_derive_name, _extract_score_and_verdict,
                  _parse_version, _report_fingerprint, _run_scan,
-                 _update_available)
+                 _trim_registry_report, _update_available)
 
 
 class ExtractScoreAndVerdict(unittest.TestCase):
@@ -315,6 +315,49 @@ class VersionComparison(unittest.TestCase):
         self.assertEqual(_parse_version("2.11.0"), (2, 11, 0))
         self.assertIsNone(_parse_version("v2.11"))
         self.assertIsNone(_parse_version(None))
+
+
+class TrimRegistryReport(unittest.TestCase):
+    """A live registry report was 196MB, of which 180MB was per-server payload
+    this app never shows. Stored whole it would sit in SQLite and come back out
+    of /api/skills on every poll."""
+
+    def _report(self, n_findings=5):
+        return {
+            "mcp_registry": True,
+            "risk_score": 100,
+            "max_risk_score": 30,
+            "server_count": 96854,
+            "servers": [{"blob": "x" * 100} for _ in range(50)],
+            "snapshots": [{"blob": "x" * 100} for _ in range(50)],
+            "findings": [{"id": f"MC{i}", "severity": "HIGH"} for i in range(n_findings)],
+        }
+
+    def test_the_headline_survives(self):
+        t = _trim_registry_report(self._report())
+        for key in ("mcp_registry", "risk_score", "max_risk_score", "server_count"):
+            self.assertIn(key, t)
+
+    def test_the_payload_nobody_renders_is_dropped(self):
+        t = _trim_registry_report(self._report())
+        self.assertNotIn("servers", t)
+        self.assertNotIn("snapshots", t)
+
+    def test_a_short_findings_list_is_left_alone(self):
+        t = _trim_registry_report(self._report(n_findings=5))
+        self.assertEqual(len(t["findings"]), 5)
+        self.assertNotIn("findings_total", t)
+
+    def test_a_long_findings_list_is_capped_and_says_so(self):
+        # The count must survive the cap. A truncated list that looked
+        # complete would read as "only 1000 problems" for a report that
+        # found 98,029 of them.
+        t = _trim_registry_report(self._report(n_findings=app.MCP_MAX_FINDINGS + 250))
+        self.assertEqual(len(t["findings"]), app.MCP_MAX_FINDINGS)
+        self.assertEqual(t["findings_total"], app.MCP_MAX_FINDINGS + 250)
+
+    def test_it_does_not_choke_on_a_non_dict(self):
+        self.assertEqual(_trim_registry_report(None), None)
 
 
 class ScanCommand(unittest.TestCase):

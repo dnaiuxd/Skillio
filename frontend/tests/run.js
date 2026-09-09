@@ -96,13 +96,15 @@ const { severityBand, bandClass, severityWord, coverageNotice,
         gateStatusLabel, countBySeverity, isHighRisk, severityRank,
         showSourceError, clearSourceError, runScan,
         isScanning, syncScanState, updateNotice,
-        scanMode, isMcpMode, onScanModeChange, updateSourceType } = sandbox;
+        scanMode, isMcpMode, onScanModeChange, updateSourceType,
+        truncationNotice } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
   updateNotice, scanMode, isMcpMode, onScanModeChange, updateSourceType,
+  truncationNotice,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -499,6 +501,21 @@ test("a registry report raises no coverage warning of its own", () => {
   // It carries no analysis_completeness; that must read as "nothing to say"
   // rather than as an incomplete scan.
   assert.equal(coverageNotice(mcpReport), null);
+});
+
+test("a capped findings list says how much is missing", () => {
+  // The standing rule in this app: a short list must never be mistaken for a
+  // clean one. A cap is exactly that hazard.
+  const n = truncationNotice({ findings: new Array(1000).fill({}), findings_total: 98029 });
+  assert.match(n, /1,000/);
+  assert.match(n, /98,029/);
+  assert.match(n, /not\s+the full list/);
+});
+
+test("an uncapped list says nothing", () => {
+  assert.equal(truncationNotice({ findings: [{}, {}] }), null);
+  assert.equal(truncationNotice({ findings: [{}, {}], findings_total: 2 }), null);
+  assert.equal(truncationNotice(null), null);
 });
 
 // --- report ----------------------------------------------------------------

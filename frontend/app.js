@@ -1039,12 +1039,35 @@ function findingLocations(f) {
     .join("  ·  ");
 }
 
+// The registry report is capped before storage — 98k findings is not a page
+// anyone reads, and the whole report was 196MB. Saying so matters: this app's
+// standing rule is that a short findings list must never be mistaken for a
+// clean one.
+function truncationNotice(report) {
+  const total = report && report.findings_total;
+  const shown = report && Array.isArray(report.findings) ? report.findings.length : 0;
+  if (!total || total <= shown) return null;
+  return (
+    `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} findings. ` +
+    `The rest were left out to keep the report a workable size — this is not ` +
+    `the full list, and the score above reflects all of them.`
+  );
+}
+
 function renderFindings(report) {
   els.findingsList.innerHTML = "";
   const raw = report && (report.findings || report.results || report.issues);
   const findings = dedupeFindings(raw || []);
 
   renderSeverityBreakdown(findings);
+
+  const truncated = truncationNotice(report);
+  if (truncated) {
+    const p = document.createElement("p");
+    p.className = "findings-truncated";
+    p.textContent = truncated;
+    els.findingsList.appendChild(p);
+  }
 
   if (findings.length === 0) {
     els.findingsList.innerHTML = `<div class="no-findings">No findings in this report.</div>`;

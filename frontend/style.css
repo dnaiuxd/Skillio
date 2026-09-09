@@ -1618,6 +1618,18 @@ main {
   line-height: 1.5;
 }
 
+/* Same amber as the incomplete-scan notice, and for the same reason: it is a
+   caveat about what you are looking at, not a finding in its own right. */
+.findings-truncated {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--medium);
+  border-radius: 20px;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--medium);
+}
+
 /* ---------- Findings by severity (bar chart) ---------- */
 
 .severity-breakdown {
