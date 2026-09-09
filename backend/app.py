@@ -48,7 +48,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Skillio", lifespan=lifespan)
+# Skillio's own version, distinct from the skillspector version reported by
+# /api/health. Single source of truth: the UI reads it from that endpoint
+# rather than carrying a second copy that could drift.
+SKILLIO_VERSION = "1.0.0"
+
+app = FastAPI(title="Skillio", version=SKILLIO_VERSION, lifespan=lifespan)
 
 # The frontend is served from this same app (same origin), so CORS isn't
 # needed for normal use. Scope it to localhost only — a wildcard would let
@@ -309,6 +314,7 @@ def health() -> dict:
         "skillspector_installed": binary is not None,
         "skillspector_path": binary,
         "version": _skillspector_version(binary) if binary else None,
+        "skillio_version": SKILLIO_VERSION,
     }
 
 

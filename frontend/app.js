@@ -348,10 +348,21 @@ async function checkForUpdates() {
   }
 }
 
+function showAppVersion(version) {
+  if (!version) return;
+  // Two credit lines exist — the rail on desktop, the footer on narrow — and
+  // only one is ever visible, so both are filled rather than picking one.
+  for (const el of document.querySelectorAll("[data-app-version]")) {
+    el.textContent = `Skillio v${version}`;
+    el.hidden = false;
+  }
+}
+
 async function checkHealth() {
   try {
     const res = await fetch(`${API}/health`);
     const data = await res.json();
+    showAppVersion(data.skillio_version);
     if (data.skillspector_installed) {
       els.health.textContent = `NVIDIA skillspector ready — ${data.version || "installed"}`;
       els.health.className = "health ok";

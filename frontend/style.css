@@ -318,6 +318,17 @@ button {
   color: var(--critical);
 }
 
+/* Sits with the credit as quiet provenance — what you are running, not
+   something to act on. Hidden until the backend reports it, so a version
+   never appears half-written or as a bare "v". */
+.app-version {
+  color: var(--ink-soft);
+}
+
+.app-version::after {
+  content: " · ";
+}
+
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
    visible track stays 52x28. */
 .theme-switch {
