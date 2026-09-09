@@ -27,14 +27,11 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="topbar-brand">
-        <h1 class="topbar-title">
-          <span class="visually-hidden">Skillio</span>
-          <img class="logo logo--light" src="skillio-logo.svg" alt="" />
-          <img class="logo logo--dark" src="skillio-logo-dark.svg" alt="" />
-        </h1>
-        <p class="topbar-tagline">Scan a skill, keep the report, decide before you install.</p>
-      </div>
+      <h1 class="topbar-title">
+        <span class="visually-hidden">Skillio</span>
+        <img class="logo logo--light" src="skillio-logo.svg" alt="" />
+        <img class="logo logo--dark" src="skillio-logo-dark.svg" alt="" />
+      </h1>
       <button type="button" class="theme-switch" id="theme-btn" role="switch"
         aria-checked="false" aria-label="Dark theme">
         <span class="theme-switch-track" aria-hidden="true">
@@ -142,6 +139,14 @@
             <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
           </div>
         </div>
+        <p class="list-intro">
+          Skillio runs NVIDIA's SkillSpector over an agent skill — a git URL, a
+          folder, or a <code>.zip</code> — and keeps every report it produces.
+          Instead of reading terminal output and trying to remember what you
+          decided, you get a browsable log: findings grouped by severity, a
+          re-scan flagged when it comes back different from the one you
+          approved, and an install decision recorded against each skill.
+        </p>
         <div id="log-summary" class="log-summary" hidden></div>
         <div class="skill-table-wrap">
           <table class="skill-table">

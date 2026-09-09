@@ -166,26 +166,6 @@ button {
   gap: 6px 24px;
 }
 
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-/* Says what the app is, where a product normally says it. Divided from the
-   lockup by a rule rather than space alone, so it reads as a caption to the
-   mark and not as part of it. Dropped when the header gets tight rather than
-   wrapped under the mark, where it would make the header taller for a line
-   nobody needs in order to use the app. */
-.topbar-tagline {
-  margin: 0 0 0 18px;
-  padding-left: 18px;
-  border-left: 1px solid var(--line);
-  font-size: var(--text-sm);
-  line-height: 1.35;
-  color: var(--ink-soft);
-}
-
 /* The logo is a lockup — mark plus wordmark — so the <h1> holds it directly
    and carries its accessible name in visually hidden text. */
 .topbar-title {
@@ -570,6 +550,24 @@ main {
   text-transform: uppercase;
   margin: 0;
   color: var(--ink);
+}
+
+/* What the app is and what it buys you, under the page title where there is
+   room to say it properly. Capped in measure rather than run to the full
+   width of the log — a line of prose past roughly 75 characters is hard to
+   track back from. Absent on the detail view, where you are reading a report
+   and no longer need the pitch. */
+.list-intro {
+  max-width: 66ch;
+  margin: -8px 0 24px;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.list-intro code {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
 }
 
 .scan-field {
@@ -1780,9 +1778,6 @@ main {
 }
 
 @media (max-width: 700px) {
-  /* Measured, not guessed: the line holds to 700px with ~38px still between
-     the brand and the theme switch, and wraps the header below that. */
-  .topbar-tagline { display: none; }
 
   main { padding: 20px; }
 
