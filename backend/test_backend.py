@@ -39,6 +39,23 @@ class ExtractScoreAndVerdict(unittest.TestCase):
                   "risk_score": 99, "verdict": "DO_NOT_INSTALL"}
         self.assertEqual(_extract_score_and_verdict(report), (5, "SAFE"))
 
+    def test_reads_an_mcp_registry_report(self):
+        # Not a hypothetical: this is the shape the live registry scan
+        # returned. It uses the top-level keys, so what the README used to
+        # call a legacy fallback is the live path for every registry scan —
+        # deleting it as dead code would break MCP scanning silently.
+        report = {
+            "mcp_registry": True,
+            "source": "https://registry.modelcontextprotocol.io/v0/servers",
+            "server_count": 96850,
+            "risk_score": 100,
+            "max_risk_score": 30,
+            "findings": [{"id": "MC001", "severity": "CRITICAL"}],
+        }
+        score, verdict = _extract_score_and_verdict(report)
+        self.assertEqual(score, 100)
+        self.assertIsNotNone(verdict)
+
     def test_zero_is_a_real_score_not_a_missing_one(self):
         # A falsy-but-present score. `or` chaining here would skip it and
         # report no score at all for the safest possible result.

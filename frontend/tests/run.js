@@ -468,6 +468,39 @@ test("the source-type chip stays quiet for a registry", () => {
   selectors.delete(MODE_SEL);
 });
 
+// --- an MCP registry report ------------------------------------------------
+// The shape a live --mcp-registry scan returns: top-level risk_score and
+// findings[], with no risk_assessment block at all. The display has to read
+// it through the same path a skill report takes.
+const mcpReport = {
+  mcp_registry: true,
+  source: "https://registry.modelcontextprotocol.io/v0/servers",
+  server_count: 96850,
+  risk_score: 100,
+  max_risk_score: 30,
+  findings: [{ id: "MC001", severity: "CRITICAL" }, { id: "MC002", severity: "HIGH" }],
+};
+const mcpRow = { score: 100, verdict: "do_not_install", report: mcpReport };
+
+test("a registry report still lands in a band", () => {
+  // No risk_assessment.severity to read, so this comes off the score.
+  assert.equal(severityBand(mcpRow), "critical");
+  assert.equal(bandClass(severityBand(mcpRow)), "critical");
+  assert.equal(isHighRisk(mcpRow), true);
+});
+
+test("a registry report's findings are counted", () => {
+  const c = countBySeverity(mcpReport.findings);
+  assert.equal(c.critical, 1);
+  assert.equal(c.high, 1);
+});
+
+test("a registry report raises no coverage warning of its own", () => {
+  // It carries no analysis_completeness; that must read as "nothing to say"
+  // rather than as an incomplete scan.
+  assert.equal(coverageNotice(mcpReport), null);
+});
+
 // --- report ----------------------------------------------------------------
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);

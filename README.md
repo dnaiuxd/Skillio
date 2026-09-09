@@ -229,10 +229,14 @@ start. Open **http://localhost:8787**.
   `risk_assessment.{score,severity,recommendation}` for the headline, and an
   `issues[]` array (one entry per code location — the GUI collapses
   repeats of a `finding_id` into one row) with `severity`, `location`,
-  `pattern`, `explanation`, `remediation`. Older top-level keys
-  (`risk_score`, `findings[]`) are still accepted as a fallback. If a
-  later release renames things, check `_extract_score_and_verdict` in
-  `backend/app.py` and `renderFindings` in `frontend/app.js`.
+  `pattern`, `explanation`, `remediation`. The top-level keys
+  (`risk_score`, `findings[]`) are also accepted — and they are not just
+  a legacy fallback any more: an `--mcp-registry` scan returns exactly
+  that shape, with `mcp_registry`, `server_count` and `max_risk_score`
+  alongside. So both branches are live, one per target type, and there
+  are tests over each. If a later release renames things, check
+  `_extract_score_and_verdict` in `backend/app.py` and `renderFindings`
+  in `frontend/app.js`.
 - Scans run in the background. The POST returns as soon as the row
   exists, and the row carries its own progress: it shows up in the log
   marked *scanning…* and fills in when `skillspector` finishes. So the
