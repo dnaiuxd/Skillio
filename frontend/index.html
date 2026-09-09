@@ -75,7 +75,7 @@
         </label>
         <label class="scan-mode-option">
           <input type="radio" name="scan-mode" value="mcp_registry" />
-          <span>MCP registry</span>
+          <span>MCP Registry</span>
         </label>
       </div>
 
@@ -143,21 +143,21 @@
 
       <section id="list-view">
         <div class="list-head">
-          <h2 class="list-title">Scan Log</h2>
+          <div class="list-head-main">
+            <h2 class="list-title">Scanner Log</h2>
+            <button type="button" class="info-btn" id="about-btn" aria-label="What is Skillio?">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+                <path d="M12 11.25v4.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <circle cx="12" cy="7.9" r="1.05" fill="currentColor" />
+              </svg>
+            </button>
+          </div>
           <div class="segmented" role="tablist" aria-label="Log view">
             <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Current</button>
             <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
           </div>
         </div>
-        <p class="list-intro">
-          Skillio runs NVIDIA's SkillSpector over an agent skill — a git URL,
-          a folder, or a <code>.zip</code> — or over the MCP registry, and
-          keeps every report it produces. Instead of reading terminal output
-          and trying to remember what you decided, you get a browsable log:
-          findings grouped by severity, a re-scan flagged when it comes back
-          different from the one you approved, and an install decision
-          recorded against each one.
-        </p>
         <div id="log-summary" class="log-summary" hidden></div>
         <div class="skill-table-wrap">
           <table class="skill-table">
@@ -234,6 +234,28 @@
   </div>
 
   <footer class="page-footer"><span class="app-version" data-app-version hidden></span><a class="credit-link" href="https://dhavalnaik.com" target="_blank" rel="noopener noreferrer">dhavalnaik.com</a></footer>
+
+  <!-- Native <dialog>: showModal() brings the focus trap, Esc-to-close, the
+       inert background and focus restoration with it, so none of that has to
+       be hand-rolled. -->
+  <dialog class="about-dialog" id="about-dialog" aria-labelledby="about-dialog-title">
+    <div class="about-dialog-body">
+      <h2 class="about-dialog-title" id="about-dialog-title">What is Skillio?</h2>
+      <p>
+        Skillio runs NVIDIA's SkillSpector over the things an agent is about to
+        trust — an agent skill from a git URL, a folder or a <code>.zip</code>,
+        or the whole <strong>MCP Registry</strong> — and keeps every report it
+        produces.
+      </p>
+      <p>
+        Instead of reading terminal output and trying to remember what you
+        decided, you get a browsable log: findings grouped by severity, a
+        re-scan flagged when it comes back different from the one you approved,
+        and an install decision recorded against each one.
+      </p>
+      <button type="button" class="btn about-dialog-close" id="about-close" autofocus>Close</button>
+    </div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

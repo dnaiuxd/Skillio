@@ -71,7 +71,7 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 SCAN_TIMEOUT_SECONDS = 300
-# The official MCP registry is hundreds of servers read in one pass, so it
+# The official MCP Registry is hundreds of servers read in one pass, so it
 # legitimately runs far longer than any single skill. Measured against the live
 # registry at over five minutes, which the skill limit would have cut off — and
 # a skill that runs that long is stuck, so the two cannot share a number.

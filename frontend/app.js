@@ -46,6 +46,9 @@ const els = {
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
   updateCheck: document.getElementById("update-check"),
+  aboutBtn: document.getElementById("about-btn"),
+  aboutDialog: document.getElementById("about-dialog"),
+  aboutClose: document.getElementById("about-close"),
   updateResult: document.getElementById("update-result"),
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
@@ -193,7 +196,7 @@ function onScanModeChange() {
   els.dropZone.hidden = mcp || stagedFile != null;
   els.scanOr.hidden = mcp || stagedFile != null;
   els.scanInput.placeholder = mcp
-    ? "MCP registry URL or payload path"
+    ? "MCP Registry URL or payload path"
     : "Git URL, path, or .zip";
   clearSourceError();
   updateSourceType();
@@ -516,7 +519,7 @@ function renderSkillList(skills) {
         <button type="button" class="row-open">
           <span class="skill-name">${escapeHtml(s.name)}</span>${
             s.target_type === "mcp_registry"
-              ? `<span class="target-tag">MCP registry</span>`
+              ? `<span class="target-tag">MCP Registry</span>`
               : ""
           }
           <span class="skill-source">${escapeHtml(s.source)}</span>
@@ -1200,6 +1203,17 @@ for (const radio of document.querySelectorAll('input[name="scan-mode"]')) {
 els.scanInput.addEventListener("input", () => {
   clearSourceError();
   updateSourceType();
+});
+// --- "What is Skillio?" dialog ---
+// showModal(), not the open attribute: only the modal path brings the focus
+// trap, Esc-to-close and inert background, and it restores focus to the
+// trigger on close without being asked.
+els.aboutBtn.addEventListener("click", () => els.aboutDialog.showModal());
+els.aboutClose.addEventListener("click", () => els.aboutDialog.close());
+// The backdrop is a pseudo-element, so a click on it targets the <dialog>
+// itself; a click on the content targets something inside the body div.
+els.aboutDialog.addEventListener("click", (e) => {
+  if (e.target === els.aboutDialog) els.aboutDialog.close();
 });
 els.llmInfoBtn.addEventListener("click", () => {
   const opening = els.llmInfo.hidden;

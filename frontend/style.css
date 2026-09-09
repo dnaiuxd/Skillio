@@ -41,6 +41,12 @@
      links read as links, and it clears 4.5:1 on all three cream grounds. */
   --link: #0969da;
 
+  /* Modal scrim. Not a new palette colour — black at opacity, which is what
+     every dialog backdrop is; it exists as a token so the two themes can
+     carry different weights. Contrast rules don't apply: nothing is read
+     through it, and the page behind it is inert. */
+  --scrim: rgb(0 0 0 / 0.45);
+
   /* Type ramp. Six steps, replacing twelve ad-hoc sizes — the 12-15px band
      alone had drifted to five values (12, 12.5, 13, 14, 15). */
   --text-xs: 12px;             /* labels, table headers, meta, mono paths */
@@ -84,6 +90,9 @@
   --d-ok: #3fb950;             /* success.fg     */
   --d-pending: #8b949e;        /* fg.muted       */
   --d-link: #2f81f7;           /* accent.fg      */
+  /* Heavier than the light one: the dialog surface is #161b22 against a
+     #0d1117 page, so a 45% scrim would barely separate the two. */
+  --d-scrim: rgb(1 4 9 / 0.72);
 }
 
 /* Applied in two places because CSS can't share one rule across a media
@@ -106,6 +115,7 @@
     --ok: var(--d-ok);
     --pending: var(--d-pending);
     --link: var(--d-link);
+    --scrim: var(--d-scrim);
     color-scheme: dark;
   }
 }
@@ -126,6 +136,7 @@
   --ok: var(--d-ok);
   --pending: var(--d-pending);
   --link: var(--d-link);
+  --scrim: var(--d-scrim);
   color-scheme: dark;
 }
 
@@ -465,6 +476,10 @@ main {
   border-right: 1px solid var(--rail-border);
 }
 
+/* The 26px top margin adds to the rail's own 14px flex gap for 40px of
+   separation from the install/update block above. That block reports on the
+   tool; everything below this heading is the form you drive it with — a rail
+   gap the same size as the one between form fields read as one long list. */
 .scan-sidebar-title {
   display: flex;
   align-items: center;
@@ -472,7 +487,7 @@ main {
   font-family: var(--font-heading);
   font-size: var(--text-lg);
   font-weight: 500;
-  margin: 0 0 4px;
+  margin: 26px 0 4px;
   color: var(--ink);
 }
 
@@ -542,6 +557,17 @@ main {
   margin-bottom: 24px;
 }
 
+/* Title and its info trigger travel together, so the tabs stay pushed to the
+   far edge and the icon never drifts into the middle of the row. Small
+   negative right margin because .info-btn is a 44px hit area around an 18px
+   glyph — without it the icon reads as sitting a wide gap from the title. */
+.list-head-main {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: -8px;
+}
+
 .list-title {
   font-family: var(--font-heading);
   font-size: var(--text-xl);
@@ -552,22 +578,54 @@ main {
   color: var(--ink);
 }
 
-/* What the app is and what it buys you, under the page title where there is
-   room to say it properly. Capped in measure rather than run to the full
-   width of the log — a line of prose past roughly 75 characters is hard to
-   track back from. Absent on the detail view, where you are reading a report
-   and no longer need the pitch. */
-.list-intro {
-  max-width: 66ch;
-  margin: -8px 0 24px;
+/* What the app is, behind the info trigger in the log header. It reads once
+   and then it is in the way, so it lives here rather than as standing prose
+   above the table. Same 1px border / 20px radius / --surface card as
+   .llm-info and .update-result--available; the scrim does the separating, so
+   no shadow is invented for it. */
+.about-dialog {
+  max-width: min(56ch, calc(100vw - 40px));
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.about-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.about-dialog-body {
+  padding: 26px 28px 22px;
+}
+
+.about-dialog-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+
+/* Capped in measure by the dialog's own max-width — a line of prose past
+   roughly 75 characters is hard to track back from. */
+.about-dialog p {
+  margin: 0 0 12px;
   font-size: var(--text-sm);
   line-height: 1.55;
   color: var(--ink-soft);
 }
 
-.list-intro code {
+.about-dialog strong { color: var(--ink); }
+
+.about-dialog code {
   font-family: var(--mono);
   font-size: var(--text-xs);
+}
+
+.about-dialog-close {
+  margin-top: 10px;
 }
 
 /* Which of the two things skillspector reads. Real radios under a segmented

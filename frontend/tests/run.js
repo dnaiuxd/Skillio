@@ -416,7 +416,7 @@ test("no payload yields no notice rather than throwing", () => {
 });
 
 // --- what is being scanned -------------------------------------------------
-// skillspector reads a skill and an MCP registry differently, and the two
+// skillspector reads a skill and an MCP Registry differently, and the two
 // look alike as URLs, so the mode is stated rather than sniffed.
 const MODE_SEL = 'input[name="scan-mode"]:checked';
 const dropZone = sandbox.document.getElementById("drop-zone");
@@ -446,7 +446,7 @@ test("registry mode puts the .zip drop zone away", () => {
   onScanModeChange();
   assert.equal(dropZone.hidden, true);
   assert.equal(scanOr.hidden, true);
-  assert.match(scanInput.placeholder || "", /MCP registry/);
+  assert.match(scanInput.placeholder || "", /MCP Registry/);
 });
 
 test("going back to skills brings the drop zone back", () => {
@@ -470,7 +470,7 @@ test("the source-type chip stays quiet for a registry", () => {
   selectors.delete(MODE_SEL);
 });
 
-// --- an MCP registry report ------------------------------------------------
+// --- an MCP Registry report ------------------------------------------------
 // The shape a live --mcp-registry scan returns: top-level risk_score and
 // findings[], with no risk_assessment block at all. The display has to read
 // it through the same path a skill report takes.
@@ -516,6 +516,43 @@ test("an uncapped list says nothing", () => {
   assert.equal(truncationNotice({ findings: [{}, {}] }), null);
   assert.equal(truncationNotice({ findings: [{}, {}], findings_total: 2 }), null);
   assert.equal(truncationNotice(null), null);
+});
+
+// --- the markup app.js assumes ---------------------------------------------
+// The DOM stub above hands back a node for any id asked of it, so app.js
+// evaluates cleanly even against markup that no longer has the element. That
+// is a blind spot: renaming an id in index.html and forgetting app.js (or the
+// reverse) breaks a control in the browser and nothing here notices. This
+// checks the two files against each other.
+const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+
+test("every id app.js looks up exists in index.html", () => {
+  const wanted = [...appSource.matchAll(/getElementById\("([^"]+)"\)/g)].map((m) => m[1]);
+  assert.ok(wanted.length > 20, `only found ${wanted.length} getElementById calls`);
+  const missing = wanted.filter((id) => !new RegExp(`id="${id}"`).test(html));
+  assert.deepEqual(missing, [], `ids in app.js with no element: ${missing.join(", ")}`);
+});
+
+test("the About dialog is a real <dialog> with its trigger and close", () => {
+  // showModal() is what brings the focus trap, Esc-to-close and the inert
+  // background. Downgrading this to a <div> would lose all three silently.
+  assert.match(html, /<dialog[^>]*id="about-dialog"/);
+  assert.match(html, /id="about-btn"/);
+  assert.match(html, /id="about-close"/);
+  assert.match(appSource, /aboutDialog\.showModal\(\)/);
+  // A modal needs an accessible name, and aria-labelledby has to point at
+  // something that is actually in the dialog.
+  const labelledBy = html.match(/<dialog[^>]*aria-labelledby="([^"]+)"/);
+  assert.ok(labelledBy, "the dialog has no aria-labelledby");
+  assert.match(html, new RegExp(`id="${labelledBy[1]}"`));
+});
+
+test("the log heading and the registry label read as intended", () => {
+  assert.match(html, /<h2 class="list-title">Scanner Log<\/h2>/);
+  // "MCP Registry" is a proper noun; a lowercase r is a typo, not a style.
+  assert.equal(/MCP registry/.test(html), false);
+  assert.equal(/MCP registry/.test(appSource), false);
 });
 
 // --- report ----------------------------------------------------------------
