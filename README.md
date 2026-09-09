@@ -1,7 +1,7 @@
 # Skillio
 
 A local dashboard for [NVIDIA SkillSpector](https://github.com/NVIDIA/SkillSpector):
-scan an agent skill or the MCP registry, browse a history of everything
+scan an agent skill or the MCP Registry, browse a history of everything
 you've scanned, and approve or reject each one before you install it.
 
 It's a thin wrapper — all the actual security analysis is done by the
@@ -113,6 +113,24 @@ To stop and remove it (your scan log is untouched):
 ./macos/install-service.sh --uninstall
 ```
 
+**Don't run a second server by hand while the agent is installed.** The
+agent has `KeepAlive`, so if something else already holds port 8787 it
+starts, fails to bind, exits, and launchd restarts it — forever. That
+loop is not harmless: uvicorn runs the app's startup hook *before* it
+binds the port, and startup is where the orphaned-scan sweep lives, so
+every lap through the loop marks any scan currently in flight as "the
+server stopped while this scan was running". The scan itself keeps going
+and its real result still lands when it finishes, but the log says it
+failed in the meantime. Check with:
+
+```bash
+tail ~/Library/Logs/skillio.log     # "address already in use", over and over
+launchctl list | grep skillio       # a non-zero exit status in column 2
+```
+
+Fix it by stopping whichever server you started by hand, or by
+uninstalling the agent if you'd rather launch it yourself.
+
 ### Install it as an app
 
 With the server running, open `http://localhost:8787` and add it to your
@@ -148,13 +166,22 @@ start. Open **http://localhost:8787**.
   about 0.16 MB. The true count is kept and the detail page says how many
   were left out, because a short findings list must never be mistaken for
   a clean one. The score is SkillSpector's and reflects all of them.
-- **Skill / MCP registry** — which of the two things SkillSpector reads.
+- **Skill / MCP Registry** — which of the two things SkillSpector reads.
   A registry URL and a skill URL are not distinguishable by shape, so the
   choice is stated rather than guessed, and it is passed straight through
   as `--mcp-registry`. SkillSpector accepts only the official registry
   endpoint — `https://registry.modelcontextprotocol.io/v0/servers`,
   exactly, without query parameters — and rejects anything else. Registry
   mode hides the `.zip` drop zone, which cannot be a registry.
+  **A registry scan often fails partway through, and that is upstream.**
+  The registry pages 30 servers at a time, so covering ~96,850 of them
+  takes roughly 3,200 sequential requests. Measured over 120 of those,
+  about 1.7% came back `500`; the same cursor fetched fine on an
+  immediate retry, but SkillSpector aborts on the first one rather than
+  retrying, so a full pass rarely survives. The failure is recorded on
+  the row like any other — score `—`, verdict `Error`, the stderr on the
+  detail page — so nothing is corrupted, and re-running is the only
+  remedy from this side.
 - **Scan bar** — paste a git URL, a local path, or a `.zip` (`~` is
   expanded), or drop a `.zip` onto the upload area / click it to browse.
   Then hit Scan. Re-scanning the same source updates its existing row
@@ -163,7 +190,10 @@ start. Open **http://localhost:8787**.
   deleted — only the report is kept, and they're identified by a hash of
   their contents, so two unrelated files both named `skill.zip` stay
   separate rows instead of overwriting each other.
-- **Log** — every skill you've scanned, sorted by most recent. Score,
+- **Scanner Log** — every skill you've scanned, sorted by most recent. The
+  ⓘ beside the heading opens a short "What is Skillio?" dialog; it reads
+  once and then it is in the way, so it lives behind a trigger rather than
+  standing above the table. Score,
   verdict, and gate status at a glance. The risk band comes from the
   report's own `risk_assessment.severity` rather than being re-derived
   here, so it can't drift from what SkillSpector decided — four bands,
@@ -281,7 +311,36 @@ the whole suite still runs in well under a second.
 
 `frontend/tests/run.js` loads `app.js` behind a small DOM stub rather
 than copying functions out of it, so renaming something in the app fails
-the suite instead of silently testing a stale copy.
+the suite instead of silently testing a stale copy. The stub hands back a
+node for any id asked of it, which would happily hide a control deleted
+from the markup — so one test reads `index.html` and checks that every id
+`app.js` looks up is really there.
+
+## Releasing
+
+Skillio's version lives in exactly one place: `SKILLIO_VERSION` in
+`backend/app.py`. The footer and the left rail read it from
+`/api/health` rather than keeping a second copy, so there is nothing to
+keep in sync by hand.
+
+```bash
+./release.sh patch          # 1.0.0 -> 1.0.1
+./release.sh minor          # 1.0.0 -> 1.1.0
+./release.sh major          # 1.0.0 -> 2.0.0
+./release.sh 1.4.2          # or set it outright
+./release.sh minor --dry-run
+```
+
+It refuses to run off `main`, refuses on a dirty tree, refuses if the tag
+already exists, and runs both suites before it changes anything — a tag
+is a claim that the commit works. Then it rewrites the one version line,
+commits it as `Release vX.Y.Z`, and adds an annotated tag.
+
+It does not push. The last line prints the command:
+
+```bash
+git push --follow-tags origin main
+```
 
 ## License
 

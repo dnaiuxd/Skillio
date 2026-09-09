@@ -361,7 +361,7 @@ class TrimRegistryReport(unittest.TestCase):
 
 
 class ScanCommand(unittest.TestCase):
-    """What actually reaches the CLI. A skill and an MCP registry are read
+    """What actually reaches the CLI. A skill and an MCP Registry are read
     differently by skillspector, and the flag is the only thing that says
     which — a registry URL and a skill URL look alike."""
 
@@ -422,6 +422,35 @@ class ScanCommand(unittest.TestCase):
         with_llm = self._cmd(use_llm=True, mcp_registry=True)
         self.assertIn("--mcp-registry", with_llm)
         self.assertNotIn("--no-llm", with_llm)
+
+
+class SkillioVersion(unittest.TestCase):
+    """release.sh is the only thing that edits SKILLIO_VERSION, and it finds
+    the line with a `^SKILLIO_VERSION = "..."$` regex, splits it on dots and
+    increments a field. These guard the shape that contract depends on: a
+    botched bump should fail here rather than ship a "v1.0" in the footer."""
+
+    def test_version_is_major_minor_patch(self):
+        parts = app.SKILLIO_VERSION.split(".")
+        self.assertEqual(len(parts), 3, app.SKILLIO_VERSION)
+        for part in parts:
+            self.assertTrue(part.isdigit(), app.SKILLIO_VERSION)
+            # "01" would survive isdigit() and then compare wrong.
+            self.assertEqual(str(int(part)), part, app.SKILLIO_VERSION)
+
+    def test_declaration_matches_what_release_sh_greps_for(self):
+        """The script's sed anchors to the whole line. A reformat that wrapped
+        it, quoted it differently or indented it would leave release.sh
+        silently finding nothing."""
+        source = (Path(app.__file__)).read_text()
+        wanted = f'SKILLIO_VERSION = "{app.SKILLIO_VERSION}"'
+        self.assertIn(f"\n{wanted}\n", source)
+
+    def test_health_reports_it(self):
+        """The UI carries no second copy — it reads the version off /api/health,
+        so that key going missing would blank the footer, not just change it."""
+        with mock.patch.object(app.shutil, "which", return_value=None):
+            self.assertEqual(app.health()["skillio_version"], app.SKILLIO_VERSION)
 
 
 if __name__ == "__main__":
