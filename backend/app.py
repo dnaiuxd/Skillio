@@ -15,13 +15,16 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
+from xml.etree import ElementTree
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -216,8 +219,8 @@ def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[st
 _version_cache: dict[str, Optional[str]] = {}
 
 
-def _skillspector_version(binary: str) -> Optional[str]:
-    if binary not in _version_cache:
+def _skillspector_version(binary: str, refresh: bool = False) -> Optional[str]:
+    if refresh or binary not in _version_cache:
         try:
             proc = subprocess.run(
                 [binary, "--version"], capture_output=True, text=True, timeout=15
@@ -226,6 +229,73 @@ def _skillspector_version(binary: str) -> Optional[str]:
         except Exception:
             _version_cache[binary] = None
     return _version_cache[binary]
+
+
+# --- is there a newer SkillSpector? ------------------------------------------
+_VERSION_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
+
+
+def _parse_version(text: Optional[str]) -> Optional[tuple]:
+    """'v2.11.0' or 'SkillSpector v2.11.0' -> (2, 11, 0). None if unparseable."""
+    if not text:
+        return None
+    m = _VERSION_RE.search(text.strip())
+    return tuple(int(g) for g in m.groups()) if m else None
+
+
+def _update_available(installed: Optional[str], latest: Optional[str]) -> bool:
+    """Compare as numbers, not text — "2.9.0" sorts above "2.10.0" as a string.
+
+    Both sides are normalised because the CLI says "SkillSpector v2.11.0"
+    while a bare tag may say "2.11.0".
+    """
+    a, b = _parse_version(installed), _parse_version(latest)
+    return bool(a and b and b > a)
+
+
+TAGS_FEED = "https://github.com/NVIDIA/SkillSpector/tags.atom"
+_ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def _latest_tag() -> tuple[str, str]:
+    """Newest version tag and its GitHub URL. Raises on any failure."""
+    req = urllib.request.Request(TAGS_FEED, headers={"User-Agent": "skillio"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        root = ElementTree.fromstring(resp.read())
+    for entry in root.findall(f"{_ATOM}entry"):  # newest first
+        title = (entry.findtext(f"{_ATOM}title") or "").strip()
+        if _parse_version(title):
+            # The entry's own link, rather than a guessed /releases/tag/ URL
+            # that need not exist if the project only tags.
+            link = entry.find(f"{_ATOM}link")
+            href = link.get("href") if link is not None else None
+            # This ends up in an href, so only ever hand back a real https URL.
+            if not (href or "").startswith("https://"):
+                href = TAGS_FEED
+            return title, href
+    raise RuntimeError("no version tags in the feed")
+
+
+@app.get("/api/updates")
+def check_updates() -> dict:
+    # refresh=True on purpose: the point of this check is that you then run
+    # `uv tool upgrade skillspector`, and the cached version would keep
+    # claiming an update is available until the server was restarted.
+    binary = _skillspector_path()
+    installed = _skillspector_version(binary, refresh=True) if binary else None
+    try:
+        latest, url = _latest_tag()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach GitHub: {exc}")
+    return {
+        "installed": installed,
+        "latest": latest,
+        "url": url,
+        "update_available": _update_available(installed, latest),
+        # Whether the two could be compared at all, so the UI never has to
+        # re-derive version parsing to work out what it may claim.
+        "comparable": _parse_version(installed) is not None,
+    }
 
 
 @app.get("/api/health")

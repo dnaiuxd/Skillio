@@ -45,6 +45,8 @@ const els = {
   gateReset: document.getElementById("gate-reset"),
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
+  updateCheck: document.getElementById("update-check"),
+  updateResult: document.getElementById("update-result"),
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
 };
@@ -105,6 +107,7 @@ let pendingScanId = null;   // the row to open once its scan lands
 const POLL_MS = 1500;
 let stagedFile = null;
 let showingArchived = false;
+let updateChecking = false;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 // Mirrors SkillSpector's _RISK_SEVERITY_BANDS — [(81, CRITICAL), (51, HIGH),
@@ -261,6 +264,73 @@ function fmtDate(ts) {
   if (!ts) return "—";
   const d = new Date(ts * 1000);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// What the result line should say, kept apart from the DOM so it can be
+// tested. The backend reports whether the two versions were comparable at
+// all, so a version we could not read is never announced as "up to date".
+function updateNotice(d) {
+  if (!d) return null;
+  if (d.update_available) {
+    return { kind: "available", text: `${d.latest} is available`, url: d.url };
+  }
+  if (!d.comparable) {
+    return {
+      kind: "unknown",
+      text: `Latest is ${d.latest}, but your installed version could not be read.`,
+      url: d.url,
+    };
+  }
+  return { kind: "current", text: `You're on the latest (${d.installed}).` };
+}
+
+async function checkForUpdates() {
+  if (updateChecking) return;
+  updateChecking = true;
+  els.updateCheck.disabled = true;
+  els.updateCheck.textContent = "Checking…";
+  els.updateResult.hidden = false; // reveal before writing, as elsewhere
+  els.updateResult.textContent = "";
+  els.updateResult.classList.remove("error");
+  try {
+    const res = await fetch(`${API}/updates`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch (_) {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    const notice = updateNotice(await res.json());
+    if (!notice) throw new Error("empty response");
+    els.updateResult.textContent = notice.text;
+    if (notice.url) {
+      // Built with DOM calls, not innerHTML: escapeHtml is for text nodes and
+      // would not make a URL safe to drop into an href.
+      els.updateResult.append(" — ");
+      const a = document.createElement("a");
+      a.href = notice.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = "release notes";
+      els.updateResult.append(a);
+    }
+    if (notice.kind === "available") {
+      els.updateResult.append(". Update with ");
+      const code = document.createElement("code");
+      code.textContent = "uv tool upgrade skillspector";
+      els.updateResult.append(code);
+    }
+  } catch (e) {
+    els.updateResult.textContent = `Couldn't reach GitHub — ${e.message}`;
+    els.updateResult.classList.add("error");
+  } finally {
+    updateChecking = false;
+    els.updateCheck.disabled = false;
+    els.updateCheck.textContent = "Check for updates";
+  }
 }
 
 async function checkHealth() {
@@ -1034,6 +1104,7 @@ async function deleteSkill() {
 
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
+els.updateCheck.addEventListener("click", checkForUpdates);
 els.scanInput.addEventListener("input", () => {
   clearSourceError();
   updateSourceType();

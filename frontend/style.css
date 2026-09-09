@@ -218,6 +218,51 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* Reads as a line of text, not a chip, but it is still a standalone control —
+   so it gets a 44px hit area the same way .theme-switch does, out of space
+   that costs nothing visually. */
+.update-check {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--text-sm);
+  color: var(--link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.update-check:disabled {
+  color: var(--ink-soft);
+  text-decoration: none;
+  cursor: not-allowed;
+}
+
+.update-check:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.update-result {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.update-result a { color: var(--link); }
+
+.update-result code {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.update-result.error { color: var(--critical); }
+
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
    visible track stays 52x28. */
 .theme-switch {

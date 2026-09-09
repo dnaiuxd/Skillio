@@ -16,7 +16,8 @@ from unittest import mock
 
 import app
 import storage
-from app import _derive_name, _extract_score_and_verdict, _report_fingerprint
+from app import (_derive_name, _extract_score_and_verdict,
+                 _parse_version, _report_fingerprint, _update_available)
 
 
 class ExtractScoreAndVerdict(unittest.TestCase):
@@ -163,8 +164,6 @@ class DeriveName(unittest.TestCase):
         self.assertEqual(_derive_name("model-chat"), "model-chat")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ScanSlot(unittest.TestCase):
@@ -258,6 +257,46 @@ class ScanLifecycle(unittest.TestCase):
         conn.close()
         storage.sweep_running_scans()
         self.assertEqual(storage.find_by_source("s")["error"], "the real cause")
+
+
+class VersionComparison(unittest.TestCase):
+    """The update check compares numbers, not text. As strings "2.9.0" sorts
+    above "2.10.0", which would hide every release in a 2.10+ line."""
+
+    def test_ten_is_newer_than_nine(self):
+        self.assertTrue(_update_available("2.9.0", "2.10.0"))
+        self.assertFalse(_update_available("2.10.0", "2.9.0"))
+
+    def test_the_v_prefix_is_optional_on_either_side(self):
+        # skillspector --version and the git tag need not agree about it.
+        self.assertTrue(_update_available("2.11.0", "v2.11.1"))
+        self.assertTrue(_update_available("v2.11.0", "2.11.1"))
+        self.assertTrue(_update_available("v2.11.0", "v2.11.1"))
+        self.assertTrue(_update_available("2.11.0", "2.11.1"))
+
+    def test_a_name_in_front_does_not_stop_it(self):
+        # What the CLI actually prints: "SkillSpector v2.11.0".
+        self.assertTrue(
+            _update_available("SkillSpector v2.11.0", "SkillSpector v2.11.1")
+        )
+
+    def test_the_same_version_is_not_an_update(self):
+        self.assertFalse(_update_available("v2.11.0", "2.11.0"))
+
+    def test_a_missing_or_unreadable_version_is_not_an_update(self):
+        # Never nag on the strength of something that could not be read.
+        for installed, latest in (
+            (None, "2.11.1"), ("2.11.0", None), (None, None),
+            ("", "2.11.1"), ("unreleased", "2.11.1"), ("2.11.0", "nightly"),
+        ):
+            self.assertFalse(_update_available(installed, latest),
+                             f"{installed!r} vs {latest!r}")
+
+    def test_parsing_pulls_the_numbers_out(self):
+        self.assertEqual(_parse_version("SkillSpector v2.11.0"), (2, 11, 0))
+        self.assertEqual(_parse_version("2.11.0"), (2, 11, 0))
+        self.assertIsNone(_parse_version("v2.11"))
+        self.assertIsNone(_parse_version(None))
 
 
 if __name__ == "__main__":

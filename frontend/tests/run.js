@@ -86,12 +86,13 @@ vm.runInContext(
 const { severityBand, bandClass, severityWord, coverageNotice,
         gateStatusLabel, countBySeverity, isHighRisk, severityRank,
         showSourceError, clearSourceError, runScan,
-        isScanning, syncScanState } = sandbox;
+        isScanning, syncScanState, updateNotice } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
+  updateNotice,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -360,6 +361,46 @@ test("an empty log leaves the form usable", () => {
   syncScanState([]);
   assert.equal(scanBtn.disabled, false);
   assert.equal(scanBtn.textContent, "Scan");
+});
+
+// --- update check ----------------------------------------------------------
+test("a newer release is announced with a link to it", () => {
+  const n = updateNotice({
+    installed: "SkillSpector v2.11.0", latest: "SkillSpector v2.11.1",
+    url: "https://github.com/NVIDIA/SkillSpector/releases/tag/v2.11.1",
+    update_available: true, comparable: true,
+  });
+  assert.equal(n.kind, "available");
+  // The tag title already carries the product name; prefixing it again would
+  // read "SkillSpector SkillSpector v2.11.1".
+  assert.equal(n.text, "SkillSpector v2.11.1 is available");
+  assert.match(n.url, /^https:\/\//);
+});
+
+test("being up to date says so, and offers no link", () => {
+  const n = updateNotice({
+    installed: "SkillSpector v2.11.1", latest: "SkillSpector v2.11.1",
+    url: "https://example.invalid", update_available: false, comparable: true,
+  });
+  assert.equal(n.kind, "current");
+  assert.match(n.text, /latest/);
+  assert.equal(n.url, undefined);
+});
+
+test("an unreadable installed version is not reported as up to date", () => {
+  // The dangerous wrong answer: telling someone they are current when the
+  // comparison never actually happened.
+  const n = updateNotice({
+    installed: null, latest: "SkillSpector v2.11.1",
+    url: "https://example.test", update_available: false, comparable: false,
+  });
+  assert.equal(n.kind, "unknown");
+  assert.doesNotMatch(n.text, /You're on the latest/);
+});
+
+test("no payload yields no notice rather than throwing", () => {
+  assert.equal(updateNotice(null), null);
+  assert.equal(updateNotice(undefined), null);
 });
 
 // --- report ----------------------------------------------------------------

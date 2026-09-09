@@ -197,6 +197,12 @@ start. Open **http://localhost:8787**.
 - Fonts are self-hosted (latin `.woff2` subsets in `frontend/fonts/`, no
   CDN call): Noto Sans for headings and body/UI, Noto Sans Mono for code.
   Licenses sit next to the files (both are OFL).
+- **Check for updates** in the sidebar compares your installed
+  `skillspector` against the newest tag on NVIDIA's repo and links to it.
+  It runs only when you click it — nothing is checked on load, on a
+  schedule, or in the background — and it is the only outbound call this
+  app makes; everything else is local. Versions are compared as numbers,
+  not text, so 2.10.0 correctly outranks 2.9.0.
 - Data lives in `backend/skillio.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - **Theme** follows your OS by default; the sun/moon switch in the
