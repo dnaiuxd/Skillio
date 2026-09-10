@@ -767,5 +767,57 @@ class SkillioSelfUpdate(unittest.TestCase):
         self.assertNotEqual(seen["url"], app.TAGS_FEED)
 
 
+class DeleteReclaimsSpace(unittest.TestCase):
+    """SQLite keeps freed pages inside the file and reuses them; it does not
+    shrink on DELETE. "Delete permanently" is the one irreversible action in
+    this app, so it should leave nothing behind — including the space."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self._patch = mock.patch.object(storage, "DB_PATH", Path(self.tmp) / "t.db")
+        self._patch.start()
+        storage.init_db()
+
+    def tearDown(self):
+        self._patch.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _size(self):
+        return storage.DB_PATH.stat().st_size
+
+    @staticmethod
+    def _big_report():
+        return {"findings": [{"id": f"F{i}", "severity": "low"} for i in range(20000)]}
+
+    def test_the_file_shrinks_when_a_report_is_deleted(self):
+        row = storage.upsert_scan("SRC", "big", 100, "DO_NOT_INSTALL",
+                                  self._big_report())
+        full = self._size()
+        self.assertGreater(full, 200_000, "the fixture is not big enough to test this")
+        self.assertTrue(storage.delete_skill(row["id"]))
+        self.assertLess(
+            self._size(), full // 4,
+            "the database did not shrink — is the VACUUM still there?",
+        )
+
+    def test_deleting_nothing_does_not_vacuum(self):
+        """VACUUM rewrites the whole file. Doing that for a delete that
+        matched no rows would be work for nothing."""
+        storage.upsert_scan("SRC", "big", 100, "X", self._big_report())
+        before = self._size()
+        self.assertFalse(storage.delete_skill(999999))
+        self.assertEqual(self._size(), before)
+
+    def test_the_other_rows_survive_it(self):
+        keep = storage.upsert_scan("KEEP", "keep", 10, "CAUTION", {"findings": []})
+        drop = storage.upsert_scan("DROP", "drop", 100, "X", self._big_report())
+        storage.delete_skill(drop["id"])
+        self.assertIsNone(storage.find_by_source("DROP"))
+        survivor = storage.find_by_source("KEEP")
+        self.assertIsNotNone(survivor)
+        self.assertEqual(survivor["id"], keep["id"])
+        self.assertEqual(survivor["verdict"], "CAUTION")
+
+
 if __name__ == "__main__":
     unittest.main()

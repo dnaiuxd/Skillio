@@ -257,8 +257,23 @@ def set_archived(skill_id: int, archived: bool) -> Optional[dict[str, Any]]:
 
 
 def delete_skill(skill_id: int) -> bool:
+    """Delete a scan record, and actually give the disk space back.
+
+    SQLite keeps freed pages inside the file and reuses them later; it does
+    not shrink the file on DELETE (auto_vacuum defaults to NONE). That is
+    normally the right trade, but here the thing being deleted is a stored
+    report — and a trimmed MCP Registry report is ~0.16 MB against a skill's
+    ~10-30 KB. "Delete permanently" is the one irreversible action in the app,
+    so it should leave nothing behind, including the space.
+
+    VACUUM rewrites the database, so it must run outside a transaction and is
+    only worth doing when something was actually removed.
+    """
     conn = get_conn()
     cur = conn.execute("DELETE FROM skills WHERE id = ?", (skill_id,))
     conn.commit()
+    deleted = cur.rowcount > 0
+    if deleted:
+        conn.execute("VACUUM")
     conn.close()
-    return cur.rowcount > 0
+    return deleted
