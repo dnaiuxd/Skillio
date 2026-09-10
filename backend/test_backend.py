@@ -23,6 +23,31 @@ from app import (_derive_name, _extract_score_and_verdict,
                  _trim_registry_report, _update_available)
 
 
+def _fake_run_writing_report(seen: dict, payload: str):
+    """A stand-in for subprocess.run that behaves like skillspector.
+
+    A registry scan is invoked with --output, so the report lands in a file
+    rather than on stdout. A fake that always answered on stdout would test a
+    path the app no longer takes.
+    """
+    class Proc:
+        returncode = 0
+        stderr = ""
+        stdout = ""
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        seen.setdefault("timeouts", []).append(kw.get("timeout"))
+        if "--output" in cmd:
+            Path(cmd[cmd.index("--output") + 1]).write_text(payload)
+            Proc.stdout = ""
+        else:
+            Proc.stdout = payload
+        return Proc()
+
+    return fake_run
+
+
 class ExtractScoreAndVerdict(unittest.TestCase):
     """SkillSpector v2.11 nests the headline under risk_assessment. Reading
     only the top level is what made every real scan show "—" and "no
@@ -369,16 +394,7 @@ class ScanCommand(unittest.TestCase):
 
     def _cmd(self, **kwargs):
         seen = {}
-
-        class Proc:
-            returncode = 0
-            stdout = '{"risk_assessment": {"score": 0}}'
-            stderr = ""
-
-        def fake_run(cmd, **_):
-            seen["cmd"] = cmd
-            return Proc()
-
+        fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
              mock.patch.object(app.subprocess, "run", fake_run):
             _run_scan("SOURCE", **kwargs)
@@ -402,15 +418,7 @@ class ScanCommand(unittest.TestCase):
         # skill limit would have killed. A skill running that long is stuck.
         seen = {}
 
-        class Proc:
-            returncode = 0
-            stdout = '{"risk_assessment": {"score": 0}}'
-            stderr = ""
-
-        def fake_run(cmd, **kw):
-            seen.setdefault("timeouts", []).append(kw.get("timeout"))
-            return Proc()
-
+        fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
              mock.patch.object(app.subprocess, "run", fake_run):
             _run_scan("SOURCE", use_llm=False)
@@ -481,13 +489,9 @@ class GateSurvivesTrimming(unittest.TestCase):
                 "verdict": "DO_NOT_INSTALL", "findings": findings}
 
     def _run_with(self, report):
-        class Proc:
-            returncode = 0
-            stderr = ""
-            stdout = json.dumps(report)
-
+        fake_run = _fake_run_writing_report({}, json.dumps(report))
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", lambda cmd, **kw: Proc()):
+             mock.patch.object(app.subprocess, "run", fake_run):
             app._claim_scan_slot()
             storage.begin_scan("REG", "MCP Registry", target_type="mcp_registry")
             app._scan_worker("REG", "MCP Registry", "REG",
@@ -817,6 +821,116 @@ class DeleteReclaimsSpace(unittest.TestCase):
         self.assertIsNotNone(survivor)
         self.assertEqual(survivor["id"], keep["id"])
         self.assertEqual(survivor["verdict"], "CAUTION")
+
+
+class StreamingRegistryReport(unittest.TestCase):
+    """The registry report is ~256 MB. json.loads on it peaks at 1.1 GB, and
+    the trim cannot help because it only runs after that parse. These cover
+    the streaming reader that replaces it."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _write(self, report):
+        path = Path(self.tmp) / "report.json"
+        path.write_text(json.dumps(report))
+        return str(path)
+
+    @staticmethod
+    def _registry(n_findings, tail_id="TAIL"):
+        findings = [{"id": f"F{i}", "severity": "low"} for i in range(n_findings)]
+        findings.append({"id": tail_id, "severity": "critical"})
+        return {
+            "mcp_registry": True,
+            "source": "https://registry.modelcontextprotocol.io/v0/servers",
+            "server_count": 96854,
+            "risk_score": 100,
+            "max_risk_score": 30,
+            # The two keys that are 180 MB of the real thing and are never
+            # rendered. Streaming must not materialise them at all.
+            "servers": [{"name": f"s{i}", "junk": "x" * 50} for i in range(500)],
+            "snapshots": [{"id": i} for i in range(500)],
+            "findings": findings,
+        }
+
+    def test_it_keeps_the_headline_and_caps_the_findings(self):
+        path = self._write(self._registry(app.MCP_MAX_FINDINGS + 500))
+        report, _ = app._stream_registry_report(path)
+        self.assertEqual(report["risk_score"], 100)
+        self.assertEqual(report["server_count"], 96854)
+        self.assertTrue(report["mcp_registry"])
+        self.assertEqual(len(report["findings"]), app.MCP_MAX_FINDINGS)
+        self.assertEqual(report["findings_total"], app.MCP_MAX_FINDINGS + 501)
+
+    def test_the_payload_keys_never_reach_the_report(self):
+        path = self._write(self._registry(10))
+        report, _ = app._stream_registry_report(path)
+        self.assertNotIn("servers", report)
+        self.assertNotIn("snapshots", report)
+
+    def test_a_short_report_claims_no_truncation(self):
+        """findings_total is what the UI uses to say "showing N of M". Setting
+        it when nothing was dropped would print a lie."""
+        path = self._write(self._registry(5))
+        report, _ = app._stream_registry_report(path)
+        self.assertNotIn("findings_total", report)
+        self.assertEqual(len(report["findings"]), 6)
+
+    def test_the_fingerprint_sees_findings_past_the_cap(self):
+        """The gate invariant. Two registries identical up to the cap and
+        different after it must not hash the same."""
+        a = self._write(self._registry(app.MCP_MAX_FINDINGS, tail_id="A"))
+        fp_a = app._stream_registry_report(a)[1]
+        b = self._write(self._registry(app.MCP_MAX_FINDINGS, tail_id="B"))
+        fp_b = app._stream_registry_report(b)[1]
+        self.assertIsNotNone(fp_a)
+        self.assertNotEqual(fp_a, fp_b)
+
+    def test_an_unchanged_registry_keeps_its_fingerprint(self):
+        a = self._write(self._registry(50, tail_id="SAME"))
+        b = self._write(self._registry(50, tail_id="SAME"))
+        self.assertEqual(
+            app._stream_registry_report(a)[1], app._stream_registry_report(b)[1]
+        )
+
+    def test_it_agrees_with_the_non_streaming_path(self):
+        """The fallback for an install without ijson must not disagree about
+        what a report says."""
+        raw = self._registry(app.MCP_MAX_FINDINGS + 20)
+        streamed, fp_stream = app._stream_registry_report(self._write(raw))
+        buffered = app._trim_registry_report(json.loads(json.dumps(raw)))
+        fp_buffered = app._report_fingerprint(json.loads(json.dumps(raw)))
+        self.assertEqual(streamed["findings_total"], buffered["findings_total"])
+        self.assertEqual(len(streamed["findings"]), len(buffered["findings"]))
+        self.assertEqual(streamed["risk_score"], buffered["risk_score"])
+        self.assertEqual(fp_stream, fp_buffered)
+
+    def test_the_report_file_is_cleaned_up(self):
+        """A quarter-gigabyte temp file must not survive the scan."""
+        seen = {}
+        fake_run = _fake_run_writing_report(seen, json.dumps(self._registry(3)))
+        with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", fake_run):
+            app._run_scan("SRC", use_llm=False, mcp_registry=True)
+        out = seen["cmd"][seen["cmd"].index("--output") + 1]
+        self.assertFalse(Path(out).exists(), "the report file was left behind")
+        self.assertFalse(Path(out).parent.exists(), "the temp dir was left behind")
+
+    def test_without_ijson_it_falls_back_rather_than_failing(self):
+        """An install that pulled code without syncing dependencies should run
+        the old path, not refuse to start."""
+        seen = {}
+        fake_run = _fake_run_writing_report(seen, json.dumps(self._registry(5)))
+        with mock.patch.object(app, "ijson", None), \
+             mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", fake_run):
+            report, fp = app._run_scan("SRC", use_llm=False, mcp_registry=True)
+        self.assertNotIn("--output", seen["cmd"])
+        self.assertNotIn("servers", report)
+        self.assertIsNotNone(fp)
 
 
 if __name__ == "__main__":

@@ -2,3 +2,6 @@ fastapi>=0.110
 uvicorn>=0.29
 pydantic>=2.6
 python-multipart>=0.0.9
+# Streaming JSON, for the MCP Registry report: ~256 MB, which json.loads
+# peaks at 1.1 GB against 32 MB streamed. See _stream_registry_report.
+ijson>=3.2

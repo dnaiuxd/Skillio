@@ -27,6 +27,14 @@ from pathlib import Path
 from typing import Optional
 from xml.etree import ElementTree
 
+try:
+    import ijson
+except ImportError:  # pragma: no cover
+    # Only reachable on an install that pulled new code without syncing
+    # dependencies. Refusing to start would be a worse answer than running
+    # with the old, memory-hungry registry path — see _run_scan.
+    ijson = None
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -123,8 +131,65 @@ def _derive_name(source: str) -> str:
     return s.split("/")[-1].split("\\")[-1] or s
 
 
-def _run_scan(source: str, use_llm: bool, mcp_registry: bool = False) -> dict:
-    """Invoke the skillspector CLI and parse its JSON report."""
+def _stream_registry_report(path: str) -> tuple[dict, Optional[str]]:
+    """Read a registry report off disk without ever holding all of it.
+
+    The official registry's report is ~256 MB of JSON. Reading it whole and
+    handing it to json.loads peaks around 1.1 GB: the text is held once as a
+    string and again, several times over, as the object graph — 96,854
+    servers and 98,029 findings, each its own dict. Measured at 1,127 MB,
+    against 31.6 MB for this. The trim alone cannot help, because it can only
+    run after the parse that costs the memory.
+
+    So findings are pulled one at a time: the first MCP_MAX_FINDINGS are kept
+    for display, every one of them contributes its key to the fingerprint,
+    and the rest are dropped as they go. `servers` and `snapshots` are never
+    materialised at all.
+
+    Returns the trimmed report and the fingerprint over ALL findings — not
+    just the kept ones, or a registry rewritten past the cap would hash
+    identical and keep a gate decision it never earned.
+    """
+    kept: list = []
+    keys: list = []
+    total = 0
+    with open(path, "rb") as fh:
+        for finding in ijson.items(fh, "findings.item", use_float=True):
+            total += 1
+            if len(kept) < MCP_MAX_FINDINGS:
+                kept.append(finding)
+            if isinstance(finding, dict):
+                keys.append(_finding_key(finding))
+
+    # A second pass for the headline values. Cheap: ijson walks the file
+    # without building anything, and only top-level scalars are captured —
+    # the two big arrays stream past and are discarded.
+    report: dict = {}
+    with open(path, "rb") as fh:
+        for prefix, event, value in ijson.parse(fh, use_float=True):
+            if prefix and "." not in prefix and event in (
+                "number", "string", "boolean", "null"
+            ):
+                report[prefix] = value
+
+    report["findings"] = kept
+    if total > len(kept):
+        report["findings_total"] = total
+
+    score, verdict = _extract_score_and_verdict(report)
+    return report, _fingerprint_of(score, verdict, keys)
+
+
+def _run_scan(
+    source: str, use_llm: bool, mcp_registry: bool = False
+) -> tuple[dict, Optional[str]]:
+    """Invoke the skillspector CLI and parse its JSON report.
+
+    Returns (report, fingerprint). The fingerprint is None for a skill scan —
+    the caller derives it from the report, which is small. A registry scan
+    computes it during the streaming parse, since the full findings list is
+    never assembled in one place for the caller to walk afterwards.
+    """
     binary = _skillspector_path()
     if not binary:
         raise RuntimeError(
@@ -143,39 +208,106 @@ def _run_scan(source: str, use_llm: bool, mcp_registry: bool = False) -> dict:
     cmd = [binary, "scan", "--format", "json"]
     if not use_llm:
         cmd.append("--no-llm")
+    out_dir = None
+    out_path = None
     if mcp_registry:
         cmd.append("--mcp-registry")
+        # --output rather than stdout: capture_output buffers the whole
+        # report through a pipe, which for the registry is a quarter of a
+        # gigabyte held before anything has even been parsed.
+        if ijson is not None:
+            out_dir = tempfile.mkdtemp(prefix="skillio_report_")
+            out_path = os.path.join(out_dir, "report.json")
+            cmd += ["--output", out_path]
     cmd += ["--", source]
 
     timeout = (
         MCP_REGISTRY_TIMEOUT_SECONDS if mcp_registry else SCAN_TIMEOUT_SECONDS
     )
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Scan timed out after {timeout}s") from exc
+
+        if out_path is not None:
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                raise RuntimeError(
+                    f"skillspector produced no report (exit code "
+                    f"{proc.returncode}). stderr: {proc.stderr.strip()[:500]}"
+                )
+            try:
+                return _stream_registry_report(out_path)
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Could not read skillspector's report: {exc}"
+                ) from exc
+
+        stdout = proc.stdout.strip()
+        if not stdout:
+            raise RuntimeError(
+                f"skillspector produced no output (exit code {proc.returncode}). "
+                f"stderr: {proc.stderr.strip()[:500]}"
+            )
+
+        try:
+            report = json.loads(stdout)
+            if mcp_registry:
+                # The no-ijson fallback: the whole report came down the pipe,
+                # so trim it here — and fingerprint BEFORE trimming, since the
+                # trim is precisely what loses the findings the gate needs.
+                return _trim_registry_report(report), _report_fingerprint(report)
+            return report, None
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"Could not parse skillspector output as JSON: {exc}. "
+                f"Raw output: {stdout[:500]}"
+            ) from exc
+    finally:
+        # A quarter-gigabyte file is not something to leave behind, however
+        # the scan ended.
+        if out_dir:
+            shutil.rmtree(out_dir, ignore_errors=True)
+
+
+def _finding_key(issue: dict) -> str:
+    """One finding's identity, for the fingerprint.
+
+    Severity is part of it: the same finding escalated from medium to
+    critical is a report the user must re-review.
+    """
+    return (
+        str(
+            issue.get("match_fingerprint")
+            or issue.get("finding_id")
+            or issue.get("id")
+            or issue.get("pattern")
+            or ""
         )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Scan timed out after {timeout}s") from exc
+        + "|"
+        + str(issue.get("severity") or "")
+    )
 
-    stdout = proc.stdout.strip()
-    if not stdout:
-        raise RuntimeError(
-            f"skillspector produced no output (exit code {proc.returncode}). "
-            f"stderr: {proc.stderr.strip()[:500]}"
-        )
 
-    try:
-        report = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(
-            f"Could not parse skillspector output as JSON: {exc}. "
-            f"Raw output: {stdout[:500]}"
-        ) from exc
+def _fingerprint_of(score, verdict, keys) -> str:
+    """The fingerprint proper, over an iterable of _finding_key strings.
 
-    return report
+    Split out from _report_fingerprint so the streaming registry parser can
+    feed it findings one at a time — it never holds the whole list, and the
+    gate still sees every finding rather than only the ones kept for display.
+    """
+    payload = json.dumps(
+        {"score": score, "verdict": verdict, "findings": sorted(keys)},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def _report_fingerprint(report: Optional[dict]) -> Optional[str]:
@@ -186,29 +318,9 @@ def _report_fingerprint(report: Optional[dict]) -> Optional[str]:
         return None
     score, verdict = _extract_score_and_verdict(report)
     issues = report.get("issues") or report.get("findings") or report.get("results") or []
-    ids = []
-    if isinstance(issues, list):
-        for issue in issues:
-            if not isinstance(issue, dict):
-                continue
-            # Severity is part of the identity: the same finding escalated
-            # from medium to critical is a report the user must re-review.
-            ids.append(
-                str(
-                    issue.get("match_fingerprint")
-                    or issue.get("finding_id")
-                    or issue.get("id")
-                    or issue.get("pattern")
-                    or ""
-                )
-                + "|"
-                + str(issue.get("severity") or "")
-            )
-    payload = json.dumps(
-        {"score": score, "verdict": verdict, "findings": sorted(ids)},
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
+    keys = [_finding_key(i) for i in issues if isinstance(i, dict)] \
+        if isinstance(issues, list) else []
+    return _fingerprint_of(score, verdict, keys)
 
 
 def _first_present(report: dict, *keys):
@@ -485,15 +597,16 @@ def _scan_worker(
     """Run one scan and write the result onto its row. Never raises."""
     try:
         try:
-            report = _run_scan(target, use_llm, mcp_registry)
-            # Fingerprint what was scanned, not what gets stored. Trimming
-            # throws away 97k of a registry's findings, and a fingerprint taken
-            # after that is blind to every change past the first 1,000 — so a
-            # registry could be rewritten underneath an approved gate and still
-            # hash identical, which is the one thing the gate exists to stop.
-            fingerprint = _report_fingerprint(report)
-            if mcp_registry:
-                report = _trim_registry_report(report)
+            report, fingerprint = _run_scan(target, use_llm, mcp_registry)
+            # Fingerprint what was SCANNED, not what gets stored. A registry
+            # report is trimmed to 1,000 of its ~98,000 findings, and a
+            # fingerprint taken after that is blind to every change past the
+            # cap — a registry could be rewritten underneath an approved gate
+            # and still hash identical, which is the one thing the gate exists
+            # to stop. The streaming reader computes it over every finding as
+            # they go past; a skill report is small, so it is derived here.
+            if fingerprint is None:
+                fingerprint = _report_fingerprint(report)
         except RuntimeError as exc:
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,

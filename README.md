@@ -253,6 +253,16 @@ start. Open **http://localhost:8787**.
 
 ## Using it
 
+- **A registry report is streamed, not loaded.** The official registry's
+  report is about 256 MB of JSON. Reading it whole and handing it to
+  `json.loads` peaks around 1.1 GB — the text held once as a string and
+  again, several times over, as the object graph. Skillio asks SkillSpector
+  to write the report to a file (`--output`) and pulls the findings out one
+  at a time: the first 1,000 are kept, every one of them contributes to the
+  gate fingerprint, and the rest are dropped as they go. `servers` and
+  `snapshots` are never built at all. Measured end to end through the
+  scan worker: **69 MB peak instead of 1,127 MB**, in two seconds. A skill
+  report is a few tens of KB and takes the plain path.
 - **Registry reports are trimmed before they are stored.** A live scan of
   the official registry came back at 196 MB — 96,854 servers, 98,029
   findings — of which about 180 MB was `servers` and `snapshots`,
