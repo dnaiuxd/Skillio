@@ -1773,6 +1773,94 @@ main {
   white-space: pre-wrap;
 }
 
+/* A failed scan, said in words rather than in stderr. The box keeps its red
+   border and a red first line — the signal is unchanged — but the prose reads
+   in the body face, and SkillSpector's own output moves into the disclosure at
+   the bottom instead of being the whole message.
+   white-space is reset because the base rule's pre-wrap exists for the
+   \n-separated notices, and this variant builds real elements. */
+.detail-error--fail {
+  white-space: normal;
+  font-family: var(--font-body);
+}
+
+.detail-error-lead {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--critical);
+}
+
+/* Soft ink, not red: the red says something failed, and carrying it through
+   three more lines of instructions only makes the instructions harder to
+   read. --ink-soft measures 7.35:1 on the light ground and 6.15:1 on the
+   dark one, so the calmer colour costs nothing. */
+.detail-error-hint {
+  margin: 8px 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.detail-error-raw {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+/* A 44px target in its own right: it is a control sitting in a box of prose,
+   where a text-sized summary would be about 17px tall. Same drawn caret as
+   .files-panel-summary, which is the same disclosure in a different box. */
+.detail-error-raw-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+.detail-error-raw-summary::-webkit-details-marker { display: none; }
+
+.detail-error-raw-summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--ink-soft);
+  border-bottom: 1.6px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.detail-error-raw[open] > .detail-error-raw-summary::before {
+  transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-error-raw-summary::before { transition: none; }
+}
+
+.detail-error-raw-summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* overflow-wrap rather than a sideways scroller: a registry URL inside a
+   traceback is one unbreakable 90-character token, and a box that scrolls
+   horizontally hides the end of the line the reader was sent here for. */
+.detail-error-raw pre {
+  margin: 4px 0 12px;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* A caveat about the scan, not a failure of it — and the truncation notice
    says the same kind of thing about the same page, so the two share one
    treatment rather than each keeping a copy. They had already drifted to

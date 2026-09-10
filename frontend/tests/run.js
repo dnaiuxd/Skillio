@@ -15,12 +15,14 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 // --- the smallest DOM that lets app.js finish evaluating -------------------
-// Attributes and focus are real rather than no-ops: the empty-source nudge is
-// expressed entirely in aria-invalid and where focus lands, so a stub that
-// swallowed both would assert nothing.
+// Attributes, focus, classes and children are real rather than no-ops: the
+// empty-source nudge lives entirely in aria-invalid and where focus lands,
+// and the failure box entirely in which classes it carries and which children
+// it holds. A stub that swallowed either would assert nothing.
 let focused = null;
 const el = (id) => {
   const attrs = new Map();
+  const classes = new Set();
   const node = {
     id,
     addEventListener() {},
@@ -30,17 +32,35 @@ const el = (id) => {
     removeAttribute(k) { attrs.delete(k); },
     focus() { focused = node; },
     contains: () => false,
-    classList: { add() {}, remove() {}, toggle() {} },
+    classList: {
+      add(...c) { for (const x of c) classes.add(x); },
+      remove(...c) { for (const x of c) classes.delete(x); },
+      contains: (c) => classes.has(c),
+      toggle(c, on) {
+        const want = on === undefined ? !classes.has(c) : !!on;
+        if (want) classes.add(c); else classes.delete(c);
+        return want;
+      },
+    },
+    children: [],
+    appendChild(child) { node.children.push(child); return child; },
+    append(...kids) { node.children.push(...kids); },
     querySelectorAll: () => [],
     querySelector: () => null,
     style: {},
     dataset: {},
     files: [],
     hidden: false,
-    textContent: "",
     innerHTML: "",
     value: "",
   };
+  // Assigning textContent empties a node in a real DOM, which is exactly how
+  // the failure box is cleared before it is rebuilt.
+  let text = "";
+  Object.defineProperty(node, "textContent", {
+    get: () => (node.children.length ? node.children.map((c) => c.textContent).join("") : text),
+    set(v) { text = String(v); node.children.length = 0; },
+  });
   return node;
 };
 
@@ -64,6 +84,11 @@ const sandbox = {
   console,
   document: {
     getElementById: byId,
+    createElement: (tag) => {
+      const n = el(tag);
+      n.tagName = String(tag).toUpperCase();
+      return n;
+    },
     querySelector: bySelector,
     querySelectorAll: () => [],
     addEventListener() {},
@@ -97,14 +122,16 @@ const { severityBand, bandClass, severityWord, coverageNotice,
         showSourceError, clearSourceError, runScan,
         isScanning, syncScanState, updateNotice,
         scanMode, isMcpMode, onScanModeChange, updateSourceType,
-        truncationNotice } = sandbox;
+        truncationNotice, friendlyError, renderScanError,
+        resetDetailError, requestMessage } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
   updateNotice, scanMode, isMcpMode, onScanModeChange, updateSourceType,
-  truncationNotice,
+  truncationNotice, friendlyError, renderScanError, resetDetailError,
+  requestMessage,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -526,6 +553,168 @@ test("an uncapped list says nothing", () => {
   assert.equal(truncationNotice(null, 0), null);
   // No count means nothing trustworthy to claim, so claim nothing.
   assert.equal(truncationNotice({ findings_total: 98029 }, undefined), null);
+});
+
+// --- what a failed scan says -----------------------------------------------
+// Every string below was produced by running skillspector against a source
+// chosen to break it, then copied out of stderr verbatim — hard wrapping and
+// all. Patterns matched against imagined output are patterns that match
+// nothing, which is the failure mode this whole feature exists to avoid.
+const RAW = {
+  registry:
+    "skillspector produced no report (exit code 2). stderr: Error: MCP Registry " +
+    "source failed: https://registry.modelcontextprotocol.io/v0/servers: " +
+    "[Errno 54] Connection reset by peer",
+  clone:
+    "skillspector produced no output (exit code 2). stderr: Error: Failed to " +
+    "clone repository",
+  host:
+    "skillspector produced no output (exit code 2). stderr: Error: Host " +
+    "'registry.modelcontextprotocol.io' is not in the allowed hosts list.\n" +
+    "Allowed: ['bitbucket.org', 'github.com', 'gitlab.com', 'huggingface.co', \n" +
+    "'raw.githubusercontent.com']",
+  inputType:
+    "skillspector produced no output (exit code 2). stderr: Error: Cannot " +
+    "determine input type for: /nope/definitely-missing\nSupported formats: " +
+    "Git URL, file URL, .zip file, .md file, or directory",
+  zip:
+    "skillspector produced no output (exit code 2). stderr: Error: Invalid zip file: \n" +
+    "/private/tmp/claude-501/-Users-dnaiuxd-Projects-skillio/95df2a3f-8769-45f5-898b-\n" +
+    "506b13408ed7/scratchpad/fake.zip",
+  timeout: "Scan timed out after 3600s",
+  missing:
+    "skillspector was not found on PATH. Install it first: `uv tool install " +
+    "git+https://github.com/NVIDIA/skillspector.git`",
+};
+
+const FALLBACK_LEAD = friendlyError("something nobody has ever seen").lead;
+
+test("every real failure gets its own answer, not the generic one", () => {
+  for (const [name, raw] of Object.entries(RAW)) {
+    const { lead, hint } = friendlyError(raw);
+    assert.notEqual(lead, FALLBACK_LEAD, `${name} falls through to the fallback`);
+    assert.ok(hint && hint.length > 20, `${name} says what happened but not what to do`);
+  }
+});
+
+test("the CLI's own line wrapping cannot break a match", () => {
+  // rich wraps stderr at ~78 columns, mid-phrase and mid-path, so a newline
+  // lands in the middle of the words being matched. This one is wrapped
+  // straight through "allowed hosts list".
+  const wrapped =
+    "Error: Host 'a-very-long-hostname-that-pushes-the-line-over.example.com' is\n" +
+    "not in the allowed hosts list.";
+  assert.match(friendlyError(wrapped).lead, /trusted sites/);
+});
+
+test("a registry address in Skill mode is answered by the host rule", () => {
+  // It matches both rules — it says "registry.modelcontextprotocol.io" and it
+  // is a host rejection. Only one of the two tells you what to do about it,
+  // so order in the table is load-bearing.
+  const { lead, hint } = friendlyError(RAW.host);
+  assert.match(lead, /trusted sites/);
+  assert.match(hint, /switch the mode/i);
+  assert.equal(/thousands of requests/.test(hint), false);
+});
+
+test("a real registry failure blames the registry, not the user", () => {
+  const { lead, hint } = friendlyError(RAW.registry);
+  assert.match(lead, /MCP Registry stopped answering/);
+  assert.match(hint, /Nothing is wrong with your setup/);
+});
+
+test("a timeout is reported in minutes, not in seconds", () => {
+  assert.match(friendlyError("Scan timed out after 3600s").lead, /60-minute/);
+  assert.match(friendlyError("Scan timed out after 600s").lead, /10-minute/);
+  // Never "0-minute": a sub-minute limit still reads as a limit.
+  assert.match(friendlyError("Scan timed out after 20s").lead, /1-minute/);
+});
+
+test("an unrecognised failure still says something useful", () => {
+  for (const raw of [null, undefined, "", "   ", "Scan failed unexpectedly: KeyError"]) {
+    const { lead, hint } = friendlyError(raw);
+    assert.equal(lead, FALLBACK_LEAD);
+    assert.ok(hint.length > 20);
+  }
+});
+
+test("the box keeps SkillSpector's own words, folded away", () => {
+  // The plain sentence is for the person reading it; the raw text is what
+  // makes a bug report worth having. Losing the second to gain the first
+  // would be a bad trade, so it is asserted verbatim.
+  const box = sandbox.document.getElementById("detail-error");
+  renderScanError(RAW.registry);
+  assert.equal(box.classList.contains("detail-error--fail"), true);
+  assert.equal(box.hidden, false);
+
+  const [lead, hint, details] = box.children;
+  assert.equal(lead.className, "detail-error-lead");
+  assert.equal(hint.className, "detail-error-hint");
+  assert.equal(details.className, "detail-error-raw");
+  assert.equal(details.tagName, "DETAILS");
+
+  const [summary, pre] = details.children;
+  assert.equal(summary.tagName, "SUMMARY");
+  assert.match(summary.textContent, /Technical details/);
+  assert.equal(pre.tagName, "PRE");
+  assert.equal(pre.textContent, RAW.registry);
+});
+
+test("nothing is built when there is nothing to fold away", () => {
+  const box = sandbox.document.getElementById("detail-error");
+  renderScanError("");
+  assert.equal(box.children.length, 2, "an empty disclosure was added anyway");
+});
+
+test("clearing takes the children and the modifier together", () => {
+  // The same box shows a failure, a caveat and a delete error. A leftover
+  // <details> or a leftover class renders one of them dressed as another.
+  const box = sandbox.document.getElementById("detail-error");
+  renderScanError(RAW.clone);
+  resetDetailError();
+  assert.equal(box.children.length, 0);
+  assert.equal(box.classList.contains("detail-error--fail"), false);
+  assert.equal(box.classList.contains("detail-error--warn"), false);
+});
+
+test("the failure path never prints a raw exit code at the reader", () => {
+  // "produced no report (exit code 2)" is a true sentence that helps nobody.
+  // It belongs in the disclosure, never in the lead or the hint.
+  for (const raw of Object.values(RAW)) {
+    const { lead, hint } = friendlyError(raw);
+    for (const part of [lead, hint]) {
+      assert.equal(/exit code|stderr|Errno|Traceback/i.test(part), false,
+        `machine wording leaked into: ${part}`);
+    }
+  }
+});
+
+test("a server that isn't there is said in words, not in browser jargon", () => {
+  // "Failed to fetch" is what the browser calls it; it is also exactly what
+  // the user sees when the launchd job has died, which has an actual fix.
+  for (const m of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch", ""]) {
+    const said = requestMessage(new Error(m), "Couldn't start the scan");
+    assert.match(said, /isn't answering/);
+    assert.match(said, /reopen Skillio/);
+    assert.equal(/fetch|NetworkError/i.test(said), false);
+  }
+});
+
+test("a bare status code is turned into a sentence with somewhere to look", () => {
+  const said = requestMessage(new Error("HTTP 500"), "Couldn't start the scan");
+  assert.match(said, /Couldn't start the scan/);
+  assert.match(said, /HTTP 500/);
+  assert.match(said, /~\/Library\/Logs/);
+});
+
+test("a reason the backend wrote is passed through as it stands", () => {
+  // The backend's details are already written for this screen — rewording
+  // them here would mean two copies of the same sentence drifting apart.
+  const said = requestMessage(
+    new Error("A scan is already running. Wait for it to finish."),
+    "Couldn't start the scan"
+  );
+  assert.match(said, /already running/);
 });
 
 // --- the markup app.js assumes ---------------------------------------------

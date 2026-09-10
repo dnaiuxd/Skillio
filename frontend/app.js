@@ -390,7 +390,7 @@ async function checkForUpdates() {
       );
     }
   } catch (e) {
-    els.updateResult.textContent = `Update check failed — ${e.message}`;
+    els.updateResult.textContent = requestMessage(e, "Couldn't check for updates");
     els.updateResult.className = "update-result update-result--error";
   } finally {
     updateChecking = false;
@@ -767,6 +767,165 @@ function coverageNotice(report) {
   );
 }
 
+// --- what went wrong, in plain words ---------------------------------------
+// A failed scan used to print the line SkillSpector wrote for whoever wrote
+// SkillSpector: "Error: Failed to clone repository", "[Errno 54] Connection
+// reset by peer", "skillspector produced no report (exit code 2)". Each one
+// is true and none of them answers the two questions the person looking at
+// the screen actually has — what happened, and is there anything I can do.
+//
+// So each entry answers both, and the stored text is not thrown away: it
+// moves into the disclosure underneath, which is what makes a bug report
+// worth reading. Every pattern here was matched against a failure produced
+// on purpose, not guessed from the source.
+//
+// Matching runs on whitespace-collapsed text: the CLI hard-wraps its own
+// errors at about 78 columns, mid-phrase and mid-path, so a newline can land
+// anywhere inside the words being matched.
+//
+// Order matters. A registry URL pasted in Skill mode fails the host check
+// and mentions the registry, and it is the host check that has the useful
+// answer, so that entry comes first.
+const SCAN_FAILURES = [
+  {
+    when: /not in the allowed hosts list/i,
+    lead: "SkillSpector only downloads from a few trusted sites, and that isn't one of them.",
+    hint:
+      "GitHub, GitLab, Bitbucket and Hugging Face are allowed. To scan the " +
+      "MCP Registry, switch the mode above to MCP Registry — pasting its " +
+      "address in Skill mode won't work.",
+  },
+  {
+    when: /mcp registry source failed|registry\.modelcontextprotocol\.io/i,
+    lead: "The MCP Registry stopped answering partway through the scan.",
+    hint:
+      "Nothing is wrong with your setup or your machine. A registry scan " +
+      "makes thousands of requests one after another and SkillSpector stops " +
+      "at the first one that fails, so this is common. Trying again is the " +
+      "only thing to do — there is nothing here to fix.",
+  },
+  {
+    when: /failed to clone repository/i,
+    lead: "That repository couldn't be downloaded.",
+    hint:
+      "Check the address, and that the repository is public — Skillio has no " +
+      "sign-in details, so a private repository looks exactly like one that " +
+      "doesn't exist.",
+  },
+  {
+    when: /cannot determine input type/i,
+    lead: "Skillio couldn't tell what kind of source that is.",
+    hint:
+      "It takes a Git URL, a .zip file, a .md file, or a folder on this Mac. " +
+      "If it's a path, check it for a typo — this is also what a folder that " +
+      "isn't there looks like.",
+  },
+  {
+    when: /invalid zip file/i,
+    lead: "That .zip couldn't be opened.",
+    hint:
+      "It may have been damaged on the way down, or it may not be a zip at " +
+      "all. Download it again, or unzip it yourself and scan the folder.",
+  },
+  {
+    when: /was not found on path/i,
+    lead: "SkillSpector isn't installed, so there was nothing to scan with.",
+    hint:
+      "Install it and scan again. The command is in the left column, beside " +
+      "“Install with”, along with what it does.",
+  },
+  {
+    when: /could not parse|could not read skillspector's report/i,
+    lead: "SkillSpector finished, but Skillio couldn't read the report it wrote.",
+    hint:
+      "That usually means SkillSpector's report format has moved on. Use " +
+      "Check for updates in the left column, then scan again.",
+  },
+  {
+    when: /scan timed out after (\d+)s/i,
+    lead: (m) =>
+      `The scan passed its ${Math.max(1, Math.round(Number(m[1]) / 60))}-minute limit and was stopped.`,
+    hint:
+      "Nothing was saved. A genuinely large repository can need longer than " +
+      "this, but a scan stuck waiting on the network usually never finishes " +
+      "at all, however long it is given.",
+  },
+  {
+    // Last of the specific ones: the wording above is more useful wherever it
+    // applies, and every one of those can also contain a network phrase.
+    when: /connection reset|connection refused|connection aborted|network is unreachable|name resolution|nodename nor servname|max retries exceeded|ssl|certificate verif/i,
+    lead: "The download couldn't get through.",
+    hint:
+      "Check you're online and try again. A VPN, a company proxy or a " +
+      "captive Wi-Fi login will also stop it, and each looks like this.",
+  },
+];
+
+const SCAN_FAILURE_FALLBACK = {
+  lead: "The scan didn't finish.",
+  hint:
+    "SkillSpector's own message is below. That's the thing to read, and the " +
+    "thing to quote if you report it.",
+};
+
+// Always returns a lead and a hint; the raw text is the caller's to keep.
+function friendlyError(raw) {
+  const text = String(raw || "").replace(/\s+/g, " ").trim();
+  if (!text) return { ...SCAN_FAILURE_FALLBACK };
+  for (const f of SCAN_FAILURES) {
+    const m = text.match(f.when);
+    if (!m) continue;
+    return {
+      lead: typeof f.lead === "function" ? f.lead(m) : f.lead,
+      hint: typeof f.hint === "function" ? f.hint(m) : f.hint,
+    };
+  }
+  return { ...SCAN_FAILURE_FALLBACK };
+}
+
+// The sentence, the suggestion, then SkillSpector's own words folded away.
+// Collapsed by default: the person who needs them knows to open it, and the
+// person who doesn't shouldn't have to read a traceback to learn their Wi-Fi
+// dropped.
+function renderScanError(raw) {
+  resetDetailError();
+  els.detailError.classList.add("detail-error--fail");
+  els.detailError.hidden = false;
+
+  const { lead, hint } = friendlyError(raw);
+  const leadEl = document.createElement("p");
+  leadEl.className = "detail-error-lead";
+  leadEl.textContent = lead;
+  els.detailError.appendChild(leadEl);
+
+  if (hint) {
+    const hintEl = document.createElement("p");
+    hintEl.className = "detail-error-hint";
+    hintEl.textContent = hint;
+    els.detailError.appendChild(hintEl);
+  }
+
+  const text = String(raw || "").trim();
+  if (!text) return;
+  const details = document.createElement("details");
+  details.className = "detail-error-raw";
+  const summary = document.createElement("summary");
+  summary.className = "detail-error-raw-summary";
+  summary.textContent = "Technical details";
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  details.append(summary, pre);
+  els.detailError.appendChild(details);
+}
+
+// Children and modifier together: the box is reused for three different
+// things, and leaving either behind renders one of them dressed as another.
+function resetDetailError() {
+  els.detailError.textContent = "";
+  els.detailError.classList.remove("detail-error--warn");
+  els.detailError.classList.remove("detail-error--fail");
+}
+
 function renderDetailSource(src) {
   src = src || "";
   els.detailSource.textContent = "";
@@ -849,11 +1008,34 @@ async function runScan() {
     // and syncScanState takes over the controls and the polling from there.
     setTab(false);
   } catch (e) {
-    showScanStatus(`Scan request failed: ${e.message}`, true);
+    showScanStatus(requestMessage(e, "Couldn't start the scan"), true);
     setScanControls(false);
   } finally {
     posting = false;
   }
+}
+
+// Two things go wrong with a request from this page and they need different
+// sentences: the server isn't there at all, or the server answered and said
+// why. "Failed to fetch" is the browser's phrase for the first and tells the
+// reader nothing; the second is already a sentence the backend wrote for this
+// screen, so it passes through untouched.
+function requestMessage(e, whatFailed) {
+  const msg = String((e && e.message) || "").trim();
+  if (!msg || /failed to fetch|load failed|networkerror/i.test(msg)) {
+    return (
+      "Skillio's own server isn't answering — it may have stopped. Quit and " +
+      "reopen Skillio, then try again."
+    );
+  }
+  const http = msg.match(/^HTTP (\d+)$/);
+  if (http) {
+    return (
+      `${whatFailed} — the server answered with an error (HTTP ${http[1]}). ` +
+      "If it keeps happening, its log is in ~/Library/Logs."
+    );
+  }
+  return `${whatFailed} — ${msg}`;
 }
 
 function showDetailView(show) {
@@ -953,21 +1135,18 @@ function renderDetail(skill) {
   }
   const coverage = coverageNotice(skill.report);
   if (coverage) notices.push(coverage);
-  els.detailError.classList.toggle(
-    "detail-error--warn",
-    !skill.error && notices.length > 0
-  );
   if (skill.error) {
-    els.detailError.hidden = false;
-    els.detailError.textContent = skill.error;
+    renderScanError(skill.error);
   } else if (notices.length) {
+    resetDetailError();
+    els.detailError.classList.add("detail-error--warn");
     els.detailError.hidden = false;
     els.detailError.textContent = notices.join("\n\n");
   } else {
     // Clear, don't just hide: leaving the previous skill's notice in the DOM
     // means any future path that unhides this element shows a warning about
     // something else entirely.
-    els.detailError.textContent = "";
+    resetDetailError();
     els.detailError.hidden = true;
   }
 
@@ -1295,7 +1474,7 @@ async function deleteSkill() {
     const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (e) {
-    els.detailError.classList.remove("detail-error--warn");
+    resetDetailError();
     els.detailError.hidden = false;
     els.detailError.textContent =
       "Could not delete this record — it may have already been removed, or the backend is down. Go back and refresh the log.";
