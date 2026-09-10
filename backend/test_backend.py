@@ -761,7 +761,10 @@ class SkillioSelfUpdate(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 app._latest_tag(app.SKILLIO_TAGS_FEED)
         self.assertEqual(seen["url"], app.SKILLIO_TAGS_FEED)
-        self.assertIn("dnaiuxd/skillio", seen["url"])
+        # Against the constant, not a spelling of it — the repository has
+        # been renamed once already and this hardcoded the old casing.
+        self.assertTrue(seen["url"].startswith(app.SKILLIO_REPO))
+        self.assertNotEqual(seen["url"], app.TAGS_FEED)
 
 
 if __name__ == "__main__":

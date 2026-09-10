@@ -297,10 +297,11 @@ def _update_available(installed: Optional[str], latest: Optional[str]) -> bool:
 
 
 TAGS_FEED = "https://github.com/NVIDIA/SkillSpector/tags.atom"
-# Skillio's own releases. Reading this needs the repository to be PUBLIC:
-# GitHub serves tags.atom unauthenticated or not at all, so while the repo is
-# private this 404s and the check reports "no update" rather than guessing.
-SKILLIO_REPO = "https://github.com/dnaiuxd/skillio"
+# Skillio's own releases. Reading this needs the repository to be public —
+# GitHub serves tags.atom unauthenticated or not at all — which it now is.
+# Cased as GitHub cases it: lowercase redirects, but the redirect target is
+# what ends up in the link, so matching avoids a needless hop.
+SKILLIO_REPO = "https://github.com/dnaiuxd/Skillio"
 SKILLIO_TAGS_FEED = f"{SKILLIO_REPO}/tags.atom"
 _ATOM = "{http://www.w3.org/2005/Atom}"
 

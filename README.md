@@ -64,15 +64,13 @@ your agent obeys and malicious instructions there have no code signature.
 ## 2. Get the GUI
 
 ```bash
-git clone https://github.com/dnaiuxd/skillio.git Skillio
+git clone https://github.com/dnaiuxd/Skillio.git
 ```
 
-The trailing `Skillio` is the folder name. Without it git names the
-directory after the repository — lowercase `skillio` — and that is the one
-place the product's name would appear in lower case, since the folder is
-what you see in Finder and in the Terminal window title when you launch it.
-Everything inside the app already reads Skillio: the browser tab, the
-installed app's name in the Dock, and the header.
+That gives you a folder called `Skillio` — git names the directory after
+the repository, and the repository is capitalised, so the product's name
+reads the same everywhere: the folder in Finder, the Terminal window title
+when you launch it, the browser tab, and the app's name in the Dock.
 
 ### Run it — one-click (macOS)
 
@@ -320,10 +318,10 @@ start. Open **http://localhost:8787**.
   check runs on page load but the answer is cached server-side for six
   hours, so a reload costs nothing, and a failure is silent — an app that
   nags about its own update check failing is worse than one that says
-  nothing. **This needs the repository to be public.** GitHub serves
-  `tags.atom` unauthenticated or not at all, so while `dnaiuxd/skillio` is
-  private the feed 404s, the tag never appears, and the credit line's link
-  only resolves for someone with access.
+  nothing. It reads the repository's `tags.atom`, which GitHub serves only
+  for public repositories — so if you fork this and make yours private, the
+  feed 404s and the tag simply never appears. That is the failure mode by
+  design: silence, never a false "you're up to date".
 - **Check for updates** in the sidebar compares your installed
   `skillspector` against the newest tag on NVIDIA's repo and links to it.
   It runs only when you click it — nothing is checked on load, on a
