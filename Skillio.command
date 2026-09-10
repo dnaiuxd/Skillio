@@ -11,7 +11,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/backend"
 
-PORT=8787
+# 8787 is what a normal install uses and what the docs say. Override it to
+# run a second checkout alongside the first — a development copy beside the
+# one you actually use:
+#
+#     SKILLIO_PORT=8788 ./Skillio.command
+#
+# The two keep separate scan logs already: the database lives inside each
+# checkout, so nothing is shared but the port.
+PORT="${SKILLIO_PORT:-8787}"
 URL="http://localhost:$PORT"
 
 # Already running? Just open it.
@@ -46,4 +54,4 @@ echo "Skillio running at $URL"
 echo "Close this window (or press Ctrl-C) to stop it."
 echo
 
-exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "$PORT"
+SKILLIO_PORT="$PORT" exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "$PORT"

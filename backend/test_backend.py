@@ -632,5 +632,32 @@ class VersionCache(unittest.TestCase):
             )
 
 
+class PortFromEnvironment(unittest.TestCase):
+    """The port is only ever used to build the CORS allowlist, which means a
+    bad value is spliced straight into an origin the server will trust."""
+
+    def _port(self, value):
+        env = {} if value is None else {"SKILLIO_PORT": value}
+        with mock.patch.dict(app.os.environ, env, clear=False):
+            if value is None:
+                app.os.environ.pop("SKILLIO_PORT", None)
+            return app._port()
+
+    def test_it_defaults_to_the_documented_port(self):
+        self.assertEqual(self._port(None), "8787")
+        self.assertEqual(self._port(""), "8787")
+        self.assertEqual(self._port("   "), "8787")
+
+    def test_a_second_checkout_can_claim_its_own_port(self):
+        self.assertEqual(self._port("8788"), "8788")
+        self.assertEqual(self._port(" 8788 "), "8788")
+
+    def test_junk_falls_back_rather_than_reaching_the_allowlist(self):
+        for bad in ("not-a-port", "80 80", "8788; rm -rf /", "-1", "0",
+                    "65536", "99999", "8788.5"):
+            with self.subTest(value=bad):
+                self.assertEqual(self._port(bad), "8787")
+
+
 if __name__ == "__main__":
     unittest.main()

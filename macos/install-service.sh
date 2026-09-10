@@ -10,11 +10,20 @@
 # into a checked-in plist, so this works from wherever the repo lives.
 set -euo pipefail
 
-LABEL="com.skillio.gui"
+PORT="${SKILLIO_PORT:-8787}"
+# The label and the log carry the port when it isn't the default, so a second
+# checkout installed as its own service cannot boot out the first one or write
+# over its log. At the default port the names are unchanged, so an existing
+# install upgrades in place.
+if [ "$PORT" = "8787" ]; then
+  LABEL="com.skillio.gui"
+  LOG="$HOME/Library/Logs/skillio.log"
+else
+  LABEL="com.skillio.gui.$PORT"
+  LOG="$HOME/Library/Logs/skillio-$PORT.log"
+fi
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 REAL_PLIST="$PLIST"
-LOG="$HOME/Library/Logs/skillio.log"
-PORT=8787
 # Labels used by older versions. Booted out on install so a rename can't
 # leave a second copy of the server running against the same port.
 LEGACY_LABELS=("com.myskillspector.gui" "com.skillspector.gui")
@@ -151,7 +160,11 @@ cat > "$PLIST" <<PLIST_EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>$REPO/backend/.venv/bin:$SKILLSPECTOR_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>$PROVIDER_XML
+        <string>$REPO/backend/.venv/bin:$SKILLSPECTOR_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <!-- The app reads this to build its CORS allowlist; --port above only
+             tells uvicorn where to listen, not the server what its origin is. -->
+        <key>SKILLIO_PORT</key>
+        <string>$PORT</string>$PROVIDER_XML
     </dict>
 
     <key>RunAtLoad</key>

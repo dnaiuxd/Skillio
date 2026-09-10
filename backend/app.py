@@ -38,6 +38,21 @@ import storage
 # by default on macOS, so Chrome would fetch the manifest as text/plain.
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
+# Which port this instance is served on. Only ever used to build the CORS
+# allowlist below — uvicorn is told where to listen separately, on the command
+# line, and does not read this.
+#
+# It exists so a second checkout can run beside the first: a development copy
+# on 8788 next to the one you actually use on 8787. Hardcoding 8787 here meant
+# the second instance's own browser origin was refused by its own backend.
+def _port() -> str:
+    raw = (os.environ.get("SKILLIO_PORT") or "").strip()
+    # A junk value would otherwise be spliced straight into an allowed origin.
+    return raw if raw.isdigit() and 1 <= int(raw) <= 65535 else "8787"
+
+
+SKILLIO_PORT = _port()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,8 +76,8 @@ app = FastAPI(title="Skillio", version=SKILLIO_VERSION, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8787",
-        "http://127.0.0.1:8787",
+        f"http://localhost:{SKILLIO_PORT}",
+        f"http://127.0.0.1:{SKILLIO_PORT}",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
