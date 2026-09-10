@@ -281,15 +281,19 @@ start. Open **http://localhost:8787**.
   endpoint — `https://registry.modelcontextprotocol.io/v0/servers`,
   exactly, without query parameters — and rejects anything else. Registry
   mode hides the `.zip` drop zone, which cannot be a registry.
-  **A registry scan often fails partway through, and that is upstream.**
+  **A registry scan usually fails partway through, and that is upstream.**
   The registry pages 30 servers at a time, so covering ~96,850 of them
-  takes roughly 3,200 sequential requests. Measured over 120 of those,
-  about 1.7% came back `500`; the same cursor fetched fine on an
-  immediate retry, but SkillSpector aborts on the first one rather than
-  retrying, so a full pass rarely survives. The failure is recorded on
-  the row like any other — score `—`, verdict `Error`, the stderr on the
-  detail page — so nothing is corrupted, and re-running is the only
-  remedy from this side.
+  takes roughly 3,200 sequential requests — and SkillSpector abandons the
+  whole scan on the first network hiccup rather than retrying that page.
+  Over that many requests, one hiccup is close to certain. Observed twice:
+  once as HTTP `500` on about 1.7% of requests (the same cursor succeeded
+  on an immediate retry), and once as `[Errno 54] Connection reset by
+  peer` about ten minutes in. A later 100-request sample saw no errors at
+  all, so the rate moves around; the fragility does not, because it only
+  takes one.
+  The failure is recorded on the row like any other — score `—`, verdict
+  `Error`, the cause on the detail page — so nothing is corrupted, and
+  re-running is the only remedy from this side.
 - **Scan bar** — paste a git URL, a local path, or a `.zip` (`~` is
   expanded), or drop a `.zip` onto the upload area / click it to browse.
   Then hit Scan. Re-scanning the same source updates its existing row

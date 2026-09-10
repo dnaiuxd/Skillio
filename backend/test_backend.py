@@ -933,5 +933,43 @@ class StreamingRegistryReport(unittest.TestCase):
         self.assertIsNotNone(fp)
 
 
+class StderrCause(unittest.TestCase):
+    """A failed scan is only actionable if the message says why it failed.
+    skillspector prints three WARNING lines before anything real, so head
+    truncation spends the budget on noise and cuts off the cause."""
+
+    WARNINGS = "\n".join(
+        f"WARNING [skillspector.graph] Skipping analyzer semantic_{n}: "
+        "required API key is missing"
+        for n in ("developer_intent", "quality_policy", "security_discovery")
+    )
+
+    def test_the_cause_survives_the_warnings(self):
+        cause = "Error: MCP Registry source failed: [Errno 54] Connection reset by peer"
+        out = app._stderr_cause(f"{self.WARNINGS}\n{cause}")
+        self.assertIn("Connection reset by peer", out)
+        self.assertNotIn("WARNING", out)
+
+    def test_a_long_traceback_keeps_its_last_line(self):
+        """The cause of a traceback is at the end, not the start."""
+        body = "\n".join(f"  File \"mod{i}.py\", line {i}" for i in range(200))
+        out = app._stderr_cause(f"{self.WARNINGS}\n{body}\nValueError: the real cause")
+        self.assertIn("ValueError: the real cause", out)
+        self.assertLessEqual(len(out), 500)
+
+    def test_it_respects_the_limit(self):
+        self.assertLessEqual(len(app._stderr_cause("x" * 5000)), 500)
+
+    def test_warnings_only_is_better_than_nothing(self):
+        """If warnings are all there is, show them rather than an empty
+        'stderr:' that says nothing at all."""
+        out = app._stderr_cause(self.WARNINGS)
+        self.assertIn("WARNING", out)
+
+    def test_empty_stays_empty(self):
+        self.assertEqual(app._stderr_cause(""), "")
+        self.assertEqual(app._stderr_cause(None), "")
+
+
 if __name__ == "__main__":
     unittest.main()

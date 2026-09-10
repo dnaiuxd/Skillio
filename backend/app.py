@@ -180,6 +180,28 @@ def _stream_registry_report(path: str) -> tuple[dict, Optional[str]]:
     return report, _fingerprint_of(score, verdict, keys)
 
 
+def _stderr_cause(text: str, limit: int = 500) -> str:
+    """The part of stderr worth reading, not the preamble.
+
+    skillspector prints one WARNING per skipped analyzer before it reaches
+    anything that actually went wrong — three of them, about 200 characters,
+    on every scan run without an LLM provider. Truncating the head of stderr
+    spends the budget on those and can cut off the error they precede, which
+    is exactly what makes a failed scan unexplainable.
+
+    So the warnings are dropped, and what is left is kept from the END: a
+    traceback's cause is its last line, not its first.
+    """
+    lines = [
+        line for line in (text or "").strip().splitlines()
+        if not line.lstrip().startswith("WARNING")
+    ]
+    kept = "\n".join(lines).strip() or (text or "").strip()
+    if len(kept) <= limit:
+        return kept
+    return "…" + kept[-(limit - 1):]
+
+
 def _run_scan(
     source: str, use_llm: bool, mcp_registry: bool = False
 ) -> tuple[dict, Optional[str]]:
@@ -239,7 +261,7 @@ def _run_scan(
             if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
                 raise RuntimeError(
                     f"skillspector produced no report (exit code "
-                    f"{proc.returncode}). stderr: {proc.stderr.strip()[:500]}"
+                    f"{proc.returncode}). stderr: {_stderr_cause(proc.stderr)}"
                 )
             try:
                 return _stream_registry_report(out_path)
@@ -254,7 +276,7 @@ def _run_scan(
         if not stdout:
             raise RuntimeError(
                 f"skillspector produced no output (exit code {proc.returncode}). "
-                f"stderr: {proc.stderr.strip()[:500]}"
+                f"stderr: {_stderr_cause(proc.stderr)}"
             )
 
         try:
