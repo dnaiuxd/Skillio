@@ -332,12 +332,18 @@ button {
 
 /* A full 44x44 target around an 18px glyph, with .command-row's negative
    vertical margins cancelling the overflow for layout only — the same trick
-   .update-check uses. The row still sits at label height; the hit area is the
-   full 44px. The 13px of transparent inset either side of the glyph is also
-   what separates it from the label, so the row needs no gap of its own. */
+   .update-check uses. The row sits at label height; the hit area is the full
+   44px.
+   The negative left margin is the horizontal half of the same idea. Leaving
+   the box's 13px inset to act as the gap set the glyph 13px from a 12px
+   label — wider than a word space, so the icon read as floating loose rather
+   than belonging to the words before it. This pulls it to a 5px optical gap
+   while the target keeps its full width; the 8px it reclaims sits over the
+   end of the label, which is the same control's own text. */
 .info-btn--inline {
   width: 44px;
   height: 44px;
+  margin-left: -8px;
 }
 
 .update-result--available .update-headline {
