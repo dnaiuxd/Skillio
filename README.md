@@ -299,6 +299,16 @@ start. Open **http://localhost:8787**.
   unpinned git install actually fetches, and what to do when `skillspector`
   still isn't found — including the launchd case, where the agent carries
   its own PATH and needs `./macos/install-service.sh` re-run.
+- **The header carries Skillio's own identity.** The wordmark links to the
+  source repository, the version sits beside it, and when a newer release
+  exists a small tag appears next to it linking to that release. The check
+  runs on page load but the answer is cached server-side for six hours, so
+  a reload costs nothing, and a failure is silent — an app that nags about
+  its own update check failing is worse than one that says nothing.
+  **This needs the repository to be public.** GitHub serves `tags.atom`
+  unauthenticated or not at all, so while `dnaiuxd/skillio` is private the
+  feed 404s, the tag never appears, and the wordmark's link only resolves
+  for someone with access.
 - **Check for updates** in the sidebar compares your installed
   `skillspector` against the newest tag on NVIDIA's repo and links to it.
   It runs only when you click it — nothing is checked on load, on a

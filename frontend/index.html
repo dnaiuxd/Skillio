@@ -28,9 +28,15 @@
   <header class="topbar">
     <div class="topbar-inner">
       <h1 class="topbar-title">
-        <span class="visually-hidden">Skillio</span>
-        <img class="logo logo--light" src="skillio-logo.svg" alt="" />
-        <img class="logo logo--dark" src="skillio-logo-dark.svg" alt="" />
+        <!-- href is set from /api/health so the repository URL has one home,
+             in the backend, rather than a copy here that can drift from it. -->
+        <a class="topbar-brand" id="brand-link" target="_blank" rel="noopener noreferrer">
+          <span class="visually-hidden">Skillio — view the source on GitHub</span>
+          <img class="logo logo--light" src="skillio-logo.svg" alt="" />
+          <img class="logo logo--dark" src="skillio-logo-dark.svg" alt="" />
+        </a>
+        <span class="topbar-version" data-app-version-only hidden></span>
+        <a class="update-tag" id="skillio-update" target="_blank" rel="noopener noreferrer" hidden></a>
       </h1>
       <button type="button" class="theme-switch" id="theme-btn" role="switch"
         aria-checked="false" aria-label="Dark theme">

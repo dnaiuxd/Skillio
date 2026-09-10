@@ -46,6 +46,8 @@ const els = {
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
   updateCheck: document.getElementById("update-check"),
+  brandLink: document.getElementById("brand-link"),
+  skillioUpdate: document.getElementById("skillio-update"),
   installHint: document.getElementById("install-hint"),
   helpDialog: document.getElementById("skillspector-help-dialog"),
   helpClose: document.getElementById("skillspector-help-close"),
@@ -450,6 +452,30 @@ function showAppVersion(version) {
     el.textContent = `Skillio v${version}`;
     el.hidden = false;
   }
+  // The header sits beside the wordmark, which already says Skillio — so it
+  // carries the number alone rather than repeating the name next to itself.
+  for (const el of document.querySelectorAll("[data-app-version-only]")) {
+    el.textContent = `v${version}`;
+    el.hidden = false;
+  }
+}
+
+// A quiet tag beside the version, not a modal or a banner: a new release of
+// this app is worth knowing about and never worth interrupting for. Silent
+// when the check couldn't reach the feed — an app that nags about its own
+// update check failing is worse than one that says nothing.
+async function checkSkillioUpdate() {
+  try {
+    const res = await fetch(`${API}/updates/skillio`);
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d || !d.update_available || !d.latest) return;
+    els.skillioUpdate.textContent = `${d.latest} available`;
+    if (d.url) els.skillioUpdate.href = d.url;
+    els.skillioUpdate.hidden = false;
+  } catch (e) {
+    // Offline, or the repository isn't public. Either way: say nothing.
+  }
 }
 
 async function checkHealth() {
@@ -457,6 +483,9 @@ async function checkHealth() {
     const res = await fetch(`${API}/health`);
     const data = await res.json();
     showAppVersion(data.skillio_version);
+    // Set rather than hardcoded in the markup, so the repository URL lives in
+    // exactly one place. Until it arrives the brand is simply not a link.
+    if (data.repo_url) els.brandLink.href = data.repo_url;
     if (data.skillspector_installed) {
       els.health.textContent = `NVIDIA skillspector ready — ${data.version || "installed"}`;
       els.health.className = "health ok";
@@ -1376,6 +1405,10 @@ window.addEventListener("drop", (e) => {
 
 checkHealth();
 loadSkills();
+// Its own request, deliberately: the result is cached server-side for hours,
+// so this costs nothing on a reload, and a slow or failed GitHub call must
+// never hold up the health line or the log.
+checkSkillioUpdate();
 // Not only on change: a reload (or a bfcache restore) brings the checked
 // radio back without firing `change`, which left the drop zone and the
 // placeholder describing skill mode while the POST carried mcp_registry: true.

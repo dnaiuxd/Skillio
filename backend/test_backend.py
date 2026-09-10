@@ -659,5 +659,110 @@ class PortFromEnvironment(unittest.TestCase):
                 self.assertEqual(self._port(bad), "8787")
 
 
+class SkillioSelfUpdate(unittest.TestCase):
+    """Skillio checking for its own release. This runs on every page load, so
+    it must be cheap and it must never break the page — the repository can be
+    private, the machine offline, GitHub rate-limiting."""
+
+    def setUp(self):
+        app._skillio_update_cache.update({"at": 0.0, "value": None})
+
+    tearDown = setUp
+
+    def test_an_unreachable_feed_reports_no_update_rather_than_raising(self):
+        def boom(*a, **kw):
+            raise OSError("404: the repository is private")
+
+        with mock.patch.object(app, "_latest_tag", boom):
+            r = app._skillio_update()
+        self.assertFalse(r["update_available"])
+        self.assertIsNone(r["latest"])
+        # Still tells the UI where the project lives, so the brand link works.
+        self.assertEqual(r["url"], app.SKILLIO_REPO)
+
+    def test_a_newer_tag_is_reported(self):
+        with mock.patch.object(app, "SKILLIO_VERSION", "1.0.0"), \
+             mock.patch.object(app, "_latest_tag",
+                               return_value=("v1.5.0", "https://example.invalid/t")):
+            r = app._skillio_update()
+        self.assertTrue(r["update_available"])
+        self.assertEqual(r["latest"], "v1.5.0")
+
+    def test_the_same_version_is_not_an_update(self):
+        with mock.patch.object(app, "_latest_tag",
+                               return_value=(f"v{app.SKILLIO_VERSION}", "u")):
+            self.assertFalse(app._skillio_update()["update_available"])
+
+    def test_an_older_tag_is_not_an_update(self):
+        """Guards against a string compare: "v1.10.0" < "v1.9.0" as text."""
+        with mock.patch.object(app, "SKILLIO_VERSION", "1.10.0"), \
+             mock.patch.object(app, "_latest_tag", return_value=("v1.9.0", "u")):
+            self.assertFalse(app._skillio_update()["update_available"])
+
+    def test_it_is_cached_so_a_page_load_costs_nothing(self):
+        calls = []
+
+        def counted(feed=None):
+            calls.append(feed)
+            return ("v9.9.9", "https://example.invalid/t")
+
+        with mock.patch.object(app, "_latest_tag", counted):
+            for _ in range(5):
+                app._skillio_update()
+        self.assertEqual(len(calls), 1, "GitHub was hit on every page load")
+
+    def test_the_cache_expires(self):
+        calls = []
+
+        def counted(feed=None):
+            calls.append(feed)
+            return ("v9.9.9", "https://example.invalid/t")
+
+        with mock.patch.object(app, "_latest_tag", counted):
+            app._skillio_update(now=1000.0)
+            app._skillio_update(now=1000.0 + app.SKILLIO_UPDATE_TTL_SECONDS - 1)
+            self.assertEqual(len(calls), 1)
+            app._skillio_update(now=1000.0 + app.SKILLIO_UPDATE_TTL_SECONDS + 1)
+            self.assertEqual(len(calls), 2)
+
+    def test_a_caller_cannot_edit_the_cache(self):
+        with mock.patch.object(app, "_latest_tag",
+                               return_value=("v9.9.9", "https://example.invalid/t")):
+            first = app._skillio_update()
+            first["update_available"] = "tampered"
+            self.assertNotEqual(app._skillio_update()["update_available"], "tampered")
+
+    def test_health_carries_the_repository_url(self):
+        """The header's brand link reads it from here, so the URL has one home
+        rather than a copy in the markup that can drift."""
+        with mock.patch.object(app.shutil, "which", return_value=None):
+            self.assertEqual(app.health()["repo_url"], app.SKILLIO_REPO)
+
+    def test_the_feed_lookup_takes_a_feed(self):
+        """Both checks share _latest_tag; it defaulted to SkillSpector's feed
+        and would silently report SkillSpector's tags as Skillio's."""
+        seen = {}
+
+        class Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b'<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+        def fake_open(req, timeout=None):
+            seen["url"] = req.full_url
+            return Resp()
+
+        with mock.patch.object(app.urllib.request, "urlopen", fake_open):
+            with self.assertRaises(RuntimeError):
+                app._latest_tag(app.SKILLIO_TAGS_FEED)
+        self.assertEqual(seen["url"], app.SKILLIO_TAGS_FEED)
+        self.assertIn("dnaiuxd/skillio", seen["url"])
+
+
 if __name__ == "__main__":
     unittest.main()

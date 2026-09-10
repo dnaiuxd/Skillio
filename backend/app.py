@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -296,12 +297,17 @@ def _update_available(installed: Optional[str], latest: Optional[str]) -> bool:
 
 
 TAGS_FEED = "https://github.com/NVIDIA/SkillSpector/tags.atom"
+# Skillio's own releases. Reading this needs the repository to be PUBLIC:
+# GitHub serves tags.atom unauthenticated or not at all, so while the repo is
+# private this 404s and the check reports "no update" rather than guessing.
+SKILLIO_REPO = "https://github.com/dnaiuxd/skillio"
+SKILLIO_TAGS_FEED = f"{SKILLIO_REPO}/tags.atom"
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
 
-def _latest_tag() -> tuple[str, str]:
+def _latest_tag(feed: str = TAGS_FEED) -> tuple[str, str]:
     """Newest version tag and its GitHub URL. Raises on any failure."""
-    req = urllib.request.Request(TAGS_FEED, headers={"User-Agent": "skillio"})
+    req = urllib.request.Request(feed, headers={"User-Agent": "skillio"})
     with urllib.request.urlopen(req, timeout=10) as resp:
         root = ElementTree.fromstring(resp.read())
     for entry in root.findall(f"{_ATOM}entry"):  # newest first
@@ -313,7 +319,7 @@ def _latest_tag() -> tuple[str, str]:
             href = link.get("href") if link is not None else None
             # This ends up in an href, so only ever hand back a real https URL.
             if not (href or "").startswith("https://"):
-                href = TAGS_FEED
+                href = feed
             return title, href
     raise RuntimeError("no version tags in the feed")
 
@@ -344,6 +350,53 @@ def check_updates() -> dict:
     }
 
 
+# Skillio checks for its own updates on every page load, so unlike the
+# skillspector check — which you press a button for — this must not hit
+# GitHub each time. A few hours is the right granularity for "a release
+# happened": far longer than a browser refresh, far shorter than caring.
+SKILLIO_UPDATE_TTL_SECONDS = 6 * 3600
+_skillio_update_cache: dict[str, object] = {"at": 0.0, "value": None}
+
+
+def _skillio_update(now: Optional[float] = None) -> dict:
+    """Is there a newer Skillio than the one running? Never raises.
+
+    A failure here is not worth a broken page: the repo may be private, the
+    machine may be offline, GitHub may be rate-limiting. Any of those report
+    "nothing to tell you", which is also the honest answer — we do not know
+    of an update. It is never reported the other way round.
+    """
+    now = time.time() if now is None else now
+    cached = _skillio_update_cache
+    if cached["value"] is not None and now - float(cached["at"]) < SKILLIO_UPDATE_TTL_SECONDS:
+        return dict(cached["value"])  # a copy; callers must not edit the cache
+
+    result = {
+        "installed": SKILLIO_VERSION,
+        "latest": None,
+        "url": SKILLIO_REPO,
+        "update_available": False,
+    }
+    try:
+        latest, url = _latest_tag(SKILLIO_TAGS_FEED)
+        result["latest"] = latest
+        result["url"] = url
+        result["update_available"] = _update_available(SKILLIO_VERSION, latest)
+    except Exception:
+        # Left as "no update known". Deliberately silent: an app that nags
+        # about its own update check failing is worse than one that doesn't.
+        pass
+
+    cached["at"] = now
+    cached["value"] = dict(result)
+    return result
+
+
+@app.get("/api/updates/skillio")
+def check_skillio_updates() -> dict:
+    return _skillio_update()
+
+
 @app.get("/api/health")
 def health() -> dict:
     binary = _skillspector_path()
@@ -352,6 +405,9 @@ def health() -> dict:
         "skillspector_path": binary,
         "version": _skillspector_version(binary) if binary else None,
         "skillio_version": SKILLIO_VERSION,
+        # One home for the repository URL. The header's brand link reads it
+        # from here rather than keeping a second copy in the markup.
+        "repo_url": SKILLIO_REPO,
     }
 
 

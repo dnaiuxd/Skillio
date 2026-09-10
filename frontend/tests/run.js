@@ -646,6 +646,42 @@ test("the inline info trigger is still a 44px target", () => {
   assert.match(rule[1], /height:\s*44px/);
 });
 
+test("the wordmark links to the repository, with a name of its own", () => {
+  // An <img alt=""> inside a link leaves the link nameless, so the visually
+  // hidden text has to sit INSIDE the anchor, not beside it in the h1.
+  const brand = html.match(/<a class="topbar-brand"[\s\S]*?<\/a>/);
+  assert.ok(brand, "no .topbar-brand link");
+  assert.match(brand[0], /visually-hidden">[^<]*GitHub/);
+  // The URL comes from /api/health so there is one copy of it, in the backend.
+  assert.equal(/href="https?:/.test(brand[0]), false, "repo URL hardcoded in markup");
+  assert.match(appSource, /brandLink\.href = data\.repo_url/);
+});
+
+test("the header version says the number, not the name twice", () => {
+  // It sits beside a wordmark that already reads SKILLIO.
+  assert.match(html, /data-app-version-only/);
+  const fn = appSource.slice(appSource.indexOf("function showAppVersion"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  assert.match(body, /data-app-version-only[\s\S]*`v\$\{version\}`/);
+});
+
+test("the update tag starts hidden and is checked on load", () => {
+  assert.match(html, /id="skillio-update"[^>]*hidden/);
+  assert.match(appSource, /^checkSkillioUpdate\(\);$/m);
+});
+
+test("a failed self-update check says nothing at all", () => {
+  // The repo may be private or the machine offline. An app that nags about
+  // its own update check failing is worse than one that stays quiet.
+  const fn = appSource.slice(appSource.indexOf("async function checkSkillioUpdate"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /if \(!res\.ok\) return/);
+  assert.match(body, /!d\.update_available/);
+  // Nothing in the failure path writes to the page.
+  const katch = body.slice(body.indexOf("catch"));
+  assert.equal(/textContent|hidden\s*=/.test(katch), false);
+});
+
 // --- report ----------------------------------------------------------------
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);

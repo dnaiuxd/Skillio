@@ -179,10 +179,76 @@ button {
 
 /* The logo is a lockup — mark plus wordmark — so the <h1> holds it directly
    and carries its accessible name in visually hidden text. */
+/* The 1.1em gap is the one the rail credit already uses either side of its
+   separator, borrowed so the wordmark sits off its version by the same
+   optical distance in both places. */
 .topbar-title {
   display: flex;
   align-items: center;
+  gap: 1.1em;
   margin: 0;
+}
+
+/* The logo is the link. min-height takes the target to 44px around a 40px
+   logo without moving anything: the topbar's own padding absorbs it. */
+.topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 4px;
+  text-decoration: none;
+}
+
+.topbar-brand:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
+}
+
+/* Quiet provenance, matching the rail credit's treatment. */
+.topbar-version {
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Borrows .target-tag's pill, and says what it is in words — colour alone
+   would not carry it (WCAG 1.4.1).
+   The target is taken to 44px by the transparent overlay below rather than
+   by min-height here: min-height inflates the VISIBLE pill, which has a
+   border and a background, and a 44px chip beside the wordmark reads as a
+   button rather than a footnote. */
+.update-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: -0.5em;
+  padding: 3px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Transparent, so the chip stays ~26px while the thing you can click is 44.
+   Vertical only: it is already well past 44 wide. */
+.update-tag::after {
+  content: "";
+  position: absolute;
+  inset: -9px 0;
+}
+
+.update-tag:hover {
+  border-color: var(--link);
+}
+
+.update-tag:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
 }
 
 /* Two files rather than one recoloured with currentColor: the dark artwork
