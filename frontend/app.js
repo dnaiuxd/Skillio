@@ -36,6 +36,10 @@ const els = {
   scoreMeter: document.getElementById("score-meter"),
   scoreMeterMarker: document.querySelector("#score-meter .score-meter-marker"),
   detailError: document.getElementById("detail-error"),
+  skillioBanner: document.getElementById("skillio-banner"),
+  skillioBannerText: document.getElementById("skillio-banner-text"),
+  skillioBannerLink: document.getElementById("skillio-banner-link"),
+  skillioBannerClose: document.getElementById("skillio-banner-close"),
   findingsList: document.getElementById("findings-list"),
   severityBreakdown: document.getElementById("severity-breakdown"),
   filesPanel: document.getElementById("files-panel"),
@@ -319,7 +323,12 @@ function updateNotice(d) {
   if (d.update_available) {
     return {
       kind: "available",
-      text: `${d.latest} is available`,
+      // Named, not just numbered. The version used to arrive as the release
+      // title ("SkillSpector v2.11.2") and now arrives as the bare tag, and
+      // this app talks about two pieces of software — "v2.12.0 is available"
+      // in a sidebar that also announces Skillio releases says nothing about
+      // which one it means.
+      text: `SkillSpector ${versionOf(d.latest)} is available`,
       url: d.url,
       command: "uv tool upgrade skillspector",
     };
@@ -342,6 +351,27 @@ async function checkForUpdates() {
   els.updateResult.hidden = false; // reveal before writing, as elsewhere
   els.updateResult.textContent = "";
   els.updateResult.className = "update-result";
+  // The headline row is built up front rather than in each branch, so the
+  // close control is on the card whatever the answer turns out to be —
+  // including the one where the check itself failed.
+  const headRow = document.createElement("div");
+  headRow.className = "update-headline-row";
+  // The words live in their own block so they can wrap among themselves
+  // without the ✕ wrapping with them — a long error message pushed it onto a
+  // line of its own, hanging under the text it belonged to.
+  const headMain = document.createElement("div");
+  headMain.className = "update-headline-main";
+  const head = document.createElement("span");
+  head.className = "update-headline";
+  const close = makeUpdateClose();
+  headMain.append(head);
+  headRow.append(headMain);
+  els.updateResult.append(headRow);
+  // Both checks go out together — the second costs nothing to start early.
+  // refresh: the button means "check now", and the server holds Skillio's
+  // answer for six hours, which is right for the silent check on load and
+  // wrong for a button someone just pressed.
+  const skillioCheck = fetchSkillioUpdate({ refresh: true });
   try {
     const res = await fetch(`${API}/updates`);
     if (!res.ok) {
@@ -357,17 +387,10 @@ async function checkForUpdates() {
     if (!notice) throw new Error("empty response");
     // Only the kind with something to do earns the weight of a card.
     els.updateResult.className = `update-result update-result--${notice.kind}`;
-
     // Headline and link share a row: "vX is available — Release notes" is one
     // statement, and giving the link its own line made a two-fact card read as
     // three stacked ones.
-    const headRow = document.createElement("div");
-    headRow.className = "update-headline-row";
-    const head = document.createElement("span");
-    head.className = "update-headline";
     head.textContent = notice.text;
-    headRow.append(head);
-    els.updateResult.append(headRow);
 
     if (notice.url) {
       // Built with DOM calls, not innerHTML: escapeHtml is for text nodes and
@@ -378,7 +401,7 @@ async function checkForUpdates() {
       a.target = "_blank";
       a.rel = "noopener noreferrer";
       a.textContent = "Release notes ↗";
-      headRow.append(a);
+      headMain.append(a);
     }
     if (notice.command) {
       renderCommandBlock(
@@ -389,10 +412,20 @@ async function checkForUpdates() {
         "How installing and upgrading SkillSpector works"
       );
     }
+    renderSkillioUpdate(await skillioCheck);
   } catch (e) {
-    els.updateResult.textContent = requestMessage(e, "Couldn't check for updates");
+    // textContent would take the close control with it, so only the headline
+    // is rewritten — the row it sits in is the one built above.
+    head.textContent = requestMessage(e, "Couldn't check for updates");
     els.updateResult.className = "update-result update-result--error";
+    // SkillSpector's check failing says nothing about Skillio's, and the
+    // banner is the more urgent of the two, so it is raised regardless.
+    renderSkillioUpdate(await skillioCheck);
   } finally {
+    // Appended here rather than up front, so the card is not an empty box
+    // with a lone ✕ in it for the second the request is in flight. Last in
+    // the row either way, which is where margin-left:auto puts it.
+    headRow.append(close);
     updateChecking = false;
     els.updateCheck.disabled = false;
     els.updateCheck.textContent = "Check for updates";
@@ -411,6 +444,60 @@ const INFO_ICON_SVG =
 // One explanation, reachable from wherever a skillspector command is shown.
 // The point is that neither card sends you to GitHub to find out what the
 // command you are about to paste into a terminal actually does.
+// Static markup, same shape as the banner's dismiss control.
+const CLOSE_ICON_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" stroke="currentColor" ' +
+  'stroke-width="1.8" stroke-linecap="round" /></svg>';
+
+// The card answers a question and then has nothing more to do, so it can be
+// put away. Clearing rather than only hiding: the next check rebuilds it, and
+// a hidden card holding last week's answer is one unhide away from lying.
+function makeUpdateClose() {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "update-close";
+  btn.setAttribute("aria-label", "Close update result");
+  btn.innerHTML = CLOSE_ICON_SVG;
+  btn.addEventListener("click", () => {
+    els.updateResult.hidden = true;
+    els.updateResult.textContent = "";
+    els.updateResult.className = "update-result";
+    // Focus was inside what just disappeared.
+    els.updateCheck.focus();
+  });
+  return btn;
+}
+
+// The words come from the accessible name the trigger already carries, so
+// there is one copy of them: a tooltip that can drift from the aria-label is
+// two different answers to the same question. aria-hidden on the tip itself,
+// or a screen reader reads the label and then reads it again.
+function attachTip(btn) {
+  const label = btn.getAttribute("aria-label");
+  if (!label || btn.querySelector(".info-tip")) return btn;
+  const tip = document.createElement("span");
+  tip.className = "info-tip";
+  tip.setAttribute("aria-hidden", "true");
+  tip.textContent = label;
+  btn.appendChild(tip);
+  return btn;
+}
+
+// WCAG 2.2 1.4.13 asks three things of content that appears on hover: that it
+// can be dismissed without moving the pointer, that the pointer can move onto
+// it without it vanishing, and that it stays until hover or focus leaves.
+// Hoverable comes free — the tip is a child of the trigger, so hovering the
+// tip is hovering the trigger. This is Dismissible. The flag lifts on the
+// next pointer move or focus change, so the next hover still works.
+function hideTips() {
+  document.documentElement.classList.add("tips-off");
+}
+
+function allowTips() {
+  document.documentElement.classList.remove("tips-off");
+}
+
 function makeHelpButton(label) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -418,7 +505,7 @@ function makeHelpButton(label) {
   btn.setAttribute("aria-label", label);
   btn.innerHTML = INFO_ICON_SVG;
   btn.addEventListener("click", () => els.helpDialog.showModal());
-  return btn;
+  return attachTip(btn);
 }
 
 // "Update with  ⓘ" / "Install with  ⓘ" over a copyable command, then one
@@ -455,22 +542,106 @@ function showAppVersion(version) {
   }
 }
 
-// A quiet tag beside the version, not a modal or a banner: a new release of
-// this app is worth knowing about and never worth interrupting for. Silent
-// when the check couldn't reach the feed — an app that nags about its own
-// update check failing is worse than one that says nothing.
+// Never rejects and never writes: the repo may be unreachable, the machine
+// offline, GitHub rate-limiting. Callers decide what silence looks like.
+async function fetchSkillioUpdate({ refresh = false } = {}) {
+  try {
+    const res = await fetch(
+      `${API}/updates/skillio${refresh ? "?refresh=true" : ""}`
+    );
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+// The last update we know about, so the tag can come back when the banner
+// that replaced it is dismissed.
+let skillioUpdateKnown = null;
+
+// The quiet tag beside the wordmark. Hidden while the banner is up: they say
+// the same sentence, and saying it twice on one screen reads as two separate
+// pieces of news.
+function showSkillioTag(d) {
+  skillioUpdateKnown = d;
+  els.skillioUpdate.textContent = `${versionOf(d.latest)} available`;
+  if (d.url) els.skillioUpdate.href = d.url;
+  els.skillioUpdate.hidden = !els.skillioBanner.hidden;
+}
+
+// On load: the tag, not a modal or a banner. A new release of this app is
+// worth knowing about and never worth interrupting for, and an app that nags
+// about its own update check failing is worse than one that says nothing.
 async function checkSkillioUpdate() {
   try {
-    const res = await fetch(`${API}/updates/skillio`);
-    if (!res.ok) return;
-    const d = await res.json();
+    const d = await fetchSkillioUpdate();
     if (!d || !d.update_available || !d.latest) return;
-    els.skillioUpdate.textContent = `${d.latest} available`;
-    if (d.url) els.skillioUpdate.href = d.url;
-    els.skillioUpdate.hidden = false;
+    showSkillioTag(d);
   } catch (e) {
     // Offline, or the repository isn't public. Either way: say nothing.
   }
+}
+
+// Tags carry a leading v ("v1.7.2"); SKILLIO_VERSION does not ("1.7.2").
+// One place to reconcile them, so the banner cannot print "vv1.7.2".
+function vLabel(version) {
+  const s = String(version || "").trim();
+  return s ? (s.startsWith("v") ? s : `v${s}`) : "";
+}
+
+// The number alone, whatever it arrived wrapped in. The backend sends a bare
+// tag now ("v2.11.2"), but a GitHub Release renames the tag's feed entry to
+// the release NAME, and a value shaped like "SkillSpector v2.11.2" — from an
+// older server, or a cached answer written before the fix — would otherwise
+// render as "SkillSpector SkillSpector v2.11.2 is available".
+function versionOf(text) {
+  const m = String(text || "").match(/v?\d+\.\d+\.\d+/);
+  return m ? vLabel(m[0]) : String(text || "").trim();
+}
+
+// The banner is only ever raised by an explicit "Check for updates" — the
+// button says updates, plural, and Skillio is one of the things that can
+// have one. Amber above the header, dismissible, with the release behind
+// one link. Nothing here fires on page load.
+function showSkillioBanner(d) {
+  skillioUpdateKnown = d;
+  // The header tag steps aside rather than repeating the banner beneath it.
+  els.skillioUpdate.hidden = true;
+  els.skillioBannerText.textContent = "";
+  const head = document.createElement("strong");
+  head.textContent = `Skillio ${versionOf(d.latest)} is available`;
+  els.skillioBannerText.append(head);
+  const installed = vLabel(d.installed);
+  els.skillioBannerText.append(
+    document.createTextNode(installed ? ` — you're on ${installed}.` : ".")
+  );
+  if (d.url) els.skillioBannerLink.href = d.url;
+  els.skillioBanner.hidden = false;
+}
+
+function dismissSkillioBanner() {
+  els.skillioBanner.hidden = true;
+  // The update did not go away because the banner did. The tag takes the
+  // news back, quietly, which is where it lives when nothing is shouting.
+  if (skillioUpdateKnown) showSkillioTag(skillioUpdateKnown);
+  // Focus was inside the element that just disappeared; put it back on the
+  // control that raised it rather than dropping it to the top of the page.
+  els.updateCheck.focus();
+}
+
+// Says something only when there is something to say. The card beside this
+// is about SkillSpector, and a second sentence in it about a second piece of
+// software read as though the two were the same thing — so nothing is added
+// when Skillio is current. An update raises the banner; no update is silent,
+// which is also what the load-time check does.
+function renderSkillioUpdate(d) {
+  if (!d || !d.update_available || !d.latest) return;
+  // Sets the tag's text and href, then the banner takes over the announcing
+  // and hides it — so dismissing the banner has a filled-in tag to fall back
+  // to rather than an empty one.
+  showSkillioTag(d);
+  showSkillioBanner(d);
 }
 
 async function checkHealth() {
@@ -1489,6 +1660,14 @@ async function deleteSkill() {
 // --- wiring ---
 els.scanBtn.addEventListener("click", runScan);
 els.updateCheck.addEventListener("click", checkForUpdates);
+// The two triggers that live in the markup; the inline one builds its own.
+for (const btn of document.querySelectorAll(".info-btn")) attachTip(btn);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideTips();
+});
+document.addEventListener("mousemove", allowTips);
+document.addEventListener("focusin", allowTips);
+els.skillioBannerClose.addEventListener("click", dismissSkillioBanner);
 for (const radio of document.querySelectorAll('input[name="scan-mode"]')) {
   radio.addEventListener("change", onScanModeChange);
 }

@@ -25,6 +25,32 @@
 
 <body>
 
+  <!-- Above the header, so an update to Skillio itself is the first thing on
+       the page rather than a tag competing with the wordmark. Hidden until
+       "Check for updates" finds one: nothing shouts on load. role="status"
+       because it appears in response to something the user did, and it is
+       revealed before it is written, or a live region announces nothing. -->
+  <div class="app-banner" id="skillio-banner" role="status" hidden>
+    <div class="app-banner-inner">
+      <svg class="app-banner-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+        <path d="M12 16.4V8.2M8.5 11.7 12 8.2l3.5 3.5" stroke="currentColor" stroke-width="1.6"
+          stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <p class="app-banner-text" id="skillio-banner-text"></p>
+      <a class="btn app-banner-btn" id="skillio-banner-link" target="_blank" rel="noopener noreferrer">
+        View on GitHub &#8599;
+      </a>
+      <button type="button" class="app-banner-close" id="skillio-banner-close"
+        aria-label="Dismiss this update notice">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6.5 6.5 17.5 17.5M17.5 6.5 6.5 17.5" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <header class="topbar">
     <div class="topbar-inner">
       <h1 class="topbar-title">

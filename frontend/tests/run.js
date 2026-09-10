@@ -23,9 +23,12 @@ let focused = null;
 const el = (id) => {
   const attrs = new Map();
   const classes = new Set();
+  const handlers = {};
   const node = {
     id,
-    addEventListener() {},
+    addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+    // Not a DOM method: how a test presses a button the code just built.
+    fire(type, ev = {}) { for (const fn of handlers[type] || []) fn(ev); },
     setAttribute(k, v) { attrs.set(k, String(v)); },
     getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null),
     hasAttribute: (k) => attrs.has(k),
@@ -54,6 +57,15 @@ const el = (id) => {
     innerHTML: "",
     value: "",
   };
+  // Assigning className replaces the whole class list, which is how the
+  // update card is reset — a plain property would have left the modifier on.
+  Object.defineProperty(node, "className", {
+    get: () => [...classes].join(" "),
+    set(v) {
+      classes.clear();
+      for (const c of String(v).split(/\s+/).filter(Boolean)) classes.add(c);
+    },
+  });
   // Assigning textContent empties a node in a real DOM, which is exactly how
   // the failure box is cleared before it is rebuilt.
   let text = "";
@@ -89,6 +101,7 @@ const sandbox = {
       n.tagName = String(tag).toUpperCase();
       return n;
     },
+    createTextNode: (t) => ({ nodeType: 3, textContent: String(t), children: [] }),
     querySelector: bySelector,
     querySelectorAll: () => [],
     addEventListener() {},
@@ -123,7 +136,10 @@ const { severityBand, bandClass, severityWord, coverageNotice,
         isScanning, syncScanState, updateNotice,
         scanMode, isMcpMode, onScanModeChange, updateSourceType,
         truncationNotice, friendlyError, renderScanError,
-        resetDetailError, requestMessage } = sandbox;
+        resetDetailError, requestMessage, vLabel, showSkillioBanner,
+        renderSkillioUpdate, dismissSkillioBanner, fetchSkillioUpdate,
+        makeUpdateClose, versionOf, attachTip, makeHelpButton,
+        hideTips, allowTips } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice,
@@ -131,7 +147,8 @@ for (const [name, fn] of Object.entries({
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
   updateNotice, scanMode, isMcpMode, onScanModeChange, updateSourceType,
   truncationNotice, friendlyError, renderScanError, resetDetailError,
-  requestMessage,
+  requestMessage, vLabel, showSkillioBanner, renderSkillioUpdate,
+  dismissSkillioBanner, fetchSkillioUpdate, makeUpdateClose,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -410,10 +427,30 @@ test("a newer release is announced with a link to it", () => {
     update_available: true, comparable: true,
   });
   assert.equal(n.kind, "available");
-  // The tag title already carries the product name; prefixing it again would
-  // read "SkillSpector SkillSpector v2.11.1".
+  // Named once, whatever shape the version arrives in. It used to be the feed
+  // entry's title, which carried the product name already; it is the bare tag
+  // now, and both have to come out as one "SkillSpector".
   assert.equal(n.text, "SkillSpector v2.11.1 is available");
   assert.match(n.url, /^https:\/\//);
+});
+
+test("the product is named once, whichever shape the version arrives in", () => {
+  // Publishing a GitHub Release renames the tag's feed entry to the release
+  // NAME, so a server that predates the backend fix — or a cached answer
+  // written before it — can still send "SkillSpector v2.11.1" here.
+  for (const latest of ["v2.11.1", "2.11.1", "SkillSpector v2.11.1",
+                        "v2.11.1 — a release with a title"]) {
+    const n = updateNotice({ installed: "SkillSpector v2.11.0", latest,
+      url: "https://example.invalid", update_available: true, comparable: true });
+    assert.equal(n.text, "SkillSpector v2.11.1 is available", `from ${latest}`);
+  }
+  // And the same for the banner, which builds its own sentence.
+  showSkillioBanner({ installed: "1.7.2", latest: "v1.8.0 — plain-language scan failures",
+    update_available: true });
+  assert.equal(
+    sandbox.document.getElementById("skillio-banner-text").textContent,
+    "Skillio v1.8.0 is available — you're on v1.7.2."
+  );
 });
 
 test("being up to date says so, and offers no link", () => {
@@ -726,6 +763,263 @@ test("a reason the backend wrote is passed through as it stands", () => {
 const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 
+// --- the Skillio update banner ---------------------------------------------
+test("a version label never doubles its v", () => {
+  // Tags carry it ("v1.8.0"), SKILLIO_VERSION does not ("1.7.2"), and both
+  // land in the same sentence.
+  assert.equal(vLabel("1.7.2"), "v1.7.2");
+  assert.equal(vLabel("v1.8.0"), "v1.8.0");
+  assert.equal(vLabel(""), "");
+  assert.equal(vLabel(null), "");
+});
+
+test("the banner names both versions and links the release", () => {
+  const banner = sandbox.document.getElementById("skillio-banner");
+  const link = sandbox.document.getElementById("skillio-banner-link");
+  showSkillioBanner({
+    installed: "1.7.2",
+    latest: "v1.8.0",
+    url: "https://github.com/dnaiuxd/Skillio/releases/tag/v1.8.0",
+    update_available: true,
+  });
+  assert.equal(banner.hidden, false);
+  const text = sandbox.document.getElementById("skillio-banner-text").textContent;
+  assert.match(text, /Skillio v1\.8\.0 is available/);
+  assert.match(text, /you're on v1\.7\.2/);
+  assert.equal(/vv/.test(text), false);
+  assert.equal(link.href, "https://github.com/dnaiuxd/Skillio/releases/tag/v1.8.0");
+});
+
+test("no update means nothing at all — no banner, no extra line", () => {
+  // The card beside this is about SkillSpector. A second sentence in it about
+  // a second piece of software read as if the two were the same thing, so an
+  // up-to-date Skillio now says nothing rather than something reassuring.
+  const banner = sandbox.document.getElementById("skillio-banner");
+  banner.hidden = true;
+  const card = sandbox.document.getElementById("update-result");
+  card.textContent = "";
+  renderSkillioUpdate({ installed: "1.7.2", latest: "v1.7.2", update_available: false });
+  assert.equal(banner.hidden, true, "raised a banner for an up-to-date app");
+  assert.equal(card.textContent, "", "wrote about Skillio into SkillSpector's card");
+  assert.equal(/Skillio itself is up to date/.test(appSource), false,
+    "the reassurance line is still in app.js");
+});
+
+test("a check that failed says nothing either way", () => {
+  const banner = sandbox.document.getElementById("skillio-banner");
+  const card = sandbox.document.getElementById("update-result");
+  banner.hidden = true;
+  card.textContent = "";
+  renderSkillioUpdate(null);
+  assert.equal(banner.hidden, true);
+  assert.equal(card.textContent, "");
+});
+
+test("dismissing puts focus back where it came from", () => {
+  // The close button is inside the thing it closes, so focus would otherwise
+  // land on <body> and a keyboard user would restart from the top.
+  showSkillioBanner({ installed: "1.7.2", latest: "v1.8.0", update_available: true });
+  dismissSkillioBanner();
+  assert.equal(sandbox.document.getElementById("skillio-banner").hidden, true);
+  assert.equal(focused, sandbox.document.getElementById("update-check"));
+});
+
+test("the banner sits above the h1 and starts hidden", () => {
+  const banner = html.match(/<div class="app-banner"[^>]*>/);
+  assert.ok(banner, "no banner markup");
+  assert.match(banner[0], /hidden/);
+  assert.match(banner[0], /role="status"/);
+  assert.ok(html.indexOf('id="skillio-banner"') < html.indexOf("<header"),
+    "the banner is not above the header");
+  assert.ok(html.indexOf('id="skillio-banner"') < html.indexOf("<h1"),
+    "the banner is not above the h1");
+  // A link out of the app, and a close control with a name.
+  assert.match(html, /id="skillio-banner-link"[^>]*rel="noopener noreferrer"/);
+  assert.match(html, /id="skillio-banner-close"[\s\S]{0,120}aria-label="[^"]+"/);
+});
+
+test("nothing announces itself on load", () => {
+  // The banner belongs to the button. checkSkillioUpdate is the load path and
+  // must never raise it — the quiet tag beside the wordmark is its whole job.
+  const fn = appSource.slice(appSource.indexOf("async function checkSkillioUpdate"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.equal(/showSkillioBanner/.test(body), false, "the load path raises the banner");
+  assert.match(appSource, /^checkSkillioUpdate\(\);$/m);
+});
+
+test("the button checks both things, and one failing does not hide the other", () => {
+  // "Check for updates" is plural. A SkillSpector check that throws used to
+  // end the function; Skillio's answer has to survive it.
+  const fn = appSource.slice(appSource.indexOf("async function checkForUpdates"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /fetchSkillioUpdate\(\{ refresh: true \}\)/);
+  const katch = body.slice(body.indexOf("} catch"));
+  assert.match(katch, /renderSkillioUpdate\(await skillioCheck\)/);
+});
+
+test("a pressed button asks for a fresh answer, not this morning's", () => {
+  // The server holds Skillio's answer for six hours, which is right for the
+  // silent check on load and wrong for a button someone just pressed.
+  const fn = appSource.slice(appSource.indexOf("async function fetchSkillioUpdate"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /refresh \? "\?refresh=true" : ""/);
+  // And the load path does NOT ask for one, or the cache would never be used.
+  const loader = appSource.slice(appSource.indexOf("async function checkSkillioUpdate"));
+  const lbody = loader.slice(0, loader.indexOf("\n}\n"));
+  assert.equal(/refresh/.test(lbody), false, "the load check busts the cache");
+});
+
+test("closing the update card empties it and hands focus back", () => {
+  // Hiding alone would leave last week's answer in the DOM, one unhide away
+  // from being shown as if it were current.
+  const card = sandbox.document.getElementById("update-result");
+  const btn = makeUpdateClose();
+  card.hidden = false;
+  card.textContent = "v2.12.0 is available";
+  card.classList.add("update-result--available");
+  btn.fire("click");
+  assert.equal(card.hidden, true);
+  assert.equal(card.textContent, "");
+  assert.equal(card.classList.contains("update-result--available"), false);
+  assert.equal(focused, sandbox.document.getElementById("update-check"));
+});
+
+test("the card's close control is a real button with a name", () => {
+  const btn = makeUpdateClose();
+  assert.equal(btn.type, "button");
+  assert.equal(btn.getAttribute("aria-label"), "Close update result");
+  // Last in its row, so the headline keeps the left edge.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const own = css.match(/\n\.update-close \{([^}]*)\}/);
+  assert.ok(own, "no .update-close rule");
+  assert.match(own[1], /margin-left:\s*auto/);
+});
+
+test("there is one dismiss control, shared by the card and the banner", () => {
+  // They were 24px and 44px, which read as two different controls doing the
+  // same job. One rule now, so they cannot drift apart again.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const shared = css.match(/\n\.update-close,\n\.app-banner-close \{([^}]*)\}/);
+  assert.ok(shared, "the two close controls no longer share a rule");
+  assert.match(shared[1], /width:\s*24px/);
+  assert.match(shared[1], /height:\s*24px/);
+  assert.match(shared[1], /position:\s*relative/);
+  // The banner's ✕ may not re-declare a size of its own: the only block it
+  // opens is the shared one above. (Matching "\n.app-banner-close {" alone
+  // would hit the second line of that shared selector and always fail.)
+  const opens = [...css.matchAll(/\n(?:([^\n]*)\n)?\.app-banner-close \{/g)];
+  assert.equal(opens.length, 1, ".app-banner-close opens more than one rule");
+  assert.equal(opens[0][1], ".update-close,", ".app-banner-close has its own rule again");
+  // Touch keeps the 44px floor for both.
+  const coarse = css.match(
+    /@media \(pointer: coarse\) \{\s*\.update-close::after,\s*\.app-banner-close::after \{([^}]*)\}/
+  );
+  assert.ok(coarse, "no coarse-pointer expansion for the close controls");
+  assert.match(coarse[1], /inset:\s*-10px/); // 24 + 10 + 10 = 44
+});
+
+test("the header tag steps aside while the banner says the same thing", () => {
+  const tag = sandbox.document.getElementById("skillio-update");
+  const banner = sandbox.document.getElementById("skillio-banner");
+  banner.hidden = true;
+  tag.hidden = true;
+
+  renderSkillioUpdate({ installed: "1.7.2", latest: "v1.8.0",
+    url: "https://example.invalid", update_available: true });
+  assert.equal(banner.hidden, false, "no banner");
+  assert.equal(tag.hidden, true, "the tag repeats the banner beneath it");
+
+  // Dismissing the banner does not dismiss the update: the tag takes it back,
+  // filled in, not empty.
+  dismissSkillioBanner();
+  assert.equal(banner.hidden, true);
+  assert.equal(tag.hidden, false, "the news vanished with the banner");
+  assert.equal(tag.textContent, "v1.8.0 available");
+  assert.equal(tag.href, "https://example.invalid");
+});
+
+test("the banner's amber comes from the palette, not from a new colour", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const token = css.match(/--attention-bg:([^;]+);/);
+  assert.ok(token, "no --attention-bg token");
+  // Derived from --medium, so both themes follow without a second copy.
+  assert.match(token[1], /var\(--medium\)/);
+  const rule = css.match(/\n\.app-banner \{([^}]*)\}/);
+  assert.match(rule[1], /var\(--attention-bg\)/);
+  assert.equal(/#[0-9a-f]{3,6}/i.test(rule[1]), false, "hardcoded colour in the banner");
+});
+
+// --- tooltips on the info triggers -----------------------------------------
+test("a tooltip says exactly what the accessible name says", () => {
+  // One copy of the words. A tooltip maintained separately from the
+  // aria-label is two different answers to the same question, and only one
+  // of them gets read aloud.
+  const btn = sandbox.document.createElement("button");
+  btn.setAttribute("aria-label", "What is Skillio?");
+  attachTip(btn);
+  const tip = btn.children[0];
+  assert.equal(tip.className, "info-tip");
+  assert.equal(tip.textContent, "What is Skillio?");
+  // Hidden from the accessibility tree: the button already announces this.
+  assert.equal(tip.getAttribute("aria-hidden"), "true");
+});
+
+test("attaching twice does not stack two tooltips", () => {
+  const btn = sandbox.document.createElement("button");
+  btn.setAttribute("aria-label", "What is Skillio?");
+  btn.querySelector = (sel) =>
+    sel === ".info-tip" ? btn.children.find((c) => c.className === "info-tip") || null : null;
+  attachTip(btn);
+  attachTip(btn);
+  assert.equal(btn.children.filter((c) => c.className === "info-tip").length, 1);
+});
+
+test("a trigger with no accessible name gets no tooltip", () => {
+  // There would be nothing to put in it, and an empty chip on hover is worse
+  // than none.
+  const btn = sandbox.document.createElement("button");
+  attachTip(btn);
+  assert.equal(btn.children.length, 0);
+});
+
+test("the inline help trigger carries one too", () => {
+  const btn = makeHelpButton("How installing and upgrading SkillSpector works");
+  const tip = btn.children.find((c) => c.className === "info-tip");
+  assert.ok(tip, "the inline trigger has no tooltip");
+  assert.equal(tip.textContent, "How installing and upgrading SkillSpector works");
+});
+
+test("the tooltip meets 1.4.13 — focus, dismiss, hover", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  // Focus, not just hover: a keyboard user gets the same words.
+  assert.match(css, /\.info-btn:hover \.info-tip,\s*\n\.info-btn:focus-visible \.info-tip/);
+  // Dismissible: Esc sets a flag on the root that wins over :hover.
+  assert.match(css, /:root\.tips-off \.info-tip/);
+  assert.match(appSource, /if \(e\.key === "Escape"\) hideTips\(\)/);
+  // ...and the flag lifts again, or the next hover would be dead.
+  assert.match(appSource, /mousemove", allowTips/);
+  assert.match(appSource, /focusin", allowTips/);
+  // Hoverable comes from the tip being a CHILD of the trigger: moving the
+  // pointer onto the tip is still hovering the button.
+  assert.match(appSource, /btn\.appendChild\(tip\)/);
+  // Not hit-testable while hidden.
+  const rule = css.match(/\n\.info-tip \{([^}]*)\}/);
+  assert.ok(rule, "no .info-tip rule");
+  assert.match(rule[1], /visibility:\s*hidden/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.info-tip \{ transition: none; \}/);
+});
+
+test("the tooltip is drawn from tokens, and separates from an ink surface", () => {
+  // The chip is --ink and so is .btn-primary right below the LLM trigger:
+  // without a hairline of the page's own ground the two merge into one shape.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const rule = css.match(/\n\.info-tip \{([^}]*)\}/)[1];
+  assert.match(rule, /background: var\(--ink\)/);
+  assert.match(rule, /color: var\(--surface\)/);
+  assert.match(rule, /border: 1px solid var\(--surface\)/);
+  assert.equal(/#[0-9a-f]{3,6}/i.test(rule), false, "hardcoded colour in the tooltip");
+});
+
 test("every id app.js looks up exists in index.html", () => {
   const wanted = [...appSource.matchAll(/getElementById\("([^"]+)"\)/g)].map((m) => m[1]);
   assert.ok(wanted.length > 20, `only found ${wanted.length} getElementById calls`);
@@ -826,14 +1120,22 @@ test("neither command state sends you to GitHub to find out what to run", () => 
   assert.match(branch, /uv tool install/);
 });
 
-test("the inline info trigger is still a 44px target", () => {
-  // It sits in a line of running text, so it is easy to shrink it to fit.
-  // The project's floor is 44, met with transparent padding, not a small box.
+test("the info trigger's target is the icon, and touch still gets 44px", () => {
+  // It was a 44px square around an 18px glyph: 13px of dead ring on every
+  // side, so a hover or a click over the blank space beside the ⓘ — or over
+  // the tail of the words before it — fired it. The box is the glyph plus a
+  // 3px ring now, which is what the user sees and what WCAG 2.2 AA asks for
+  // (2.5.8, 24×24). A finger has no 3px precision, so coarse pointers get
+  // the project's 44px floor back through an overlay that moves no layout.
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
-  const rule = css.match(/\.info-btn--inline\s*\{([^}]*)\}/);
-  assert.ok(rule, "no .info-btn--inline rule");
-  assert.match(rule[1], /width:\s*44px/);
-  assert.match(rule[1], /height:\s*44px/);
+  const rule = css.match(/\n\.info-btn \{([^}]*)\}/);
+  assert.ok(rule, "no .info-btn rule");
+  assert.match(rule[1], /width:\s*24px/);
+  assert.match(rule[1], /height:\s*24px/);
+  assert.match(rule[1], /position:\s*relative/);
+  const coarse = css.match(/@media \(pointer: coarse\) \{\s*\.info-btn::after \{([^}]*)\}/);
+  assert.ok(coarse, "no coarse-pointer expansion for .info-btn");
+  assert.match(coarse[1], /inset:\s*-10px/); // 24 + 10 + 10 = 44
 });
 
 test("the credit line's Skillio is the link to the repository", () => {
@@ -870,15 +1172,17 @@ test("the update tag starts hidden and is checked on load", () => {
 });
 
 test("a failed self-update check says nothing at all", () => {
-  // The repo may be private or the machine offline. An app that nags about
-  // its own update check failing is worse than one that stays quiet.
-  const fn = appSource.slice(appSource.indexOf("async function checkSkillioUpdate"));
+  // The repo may be unreachable or the machine offline. An app that nags
+  // about its own update check failing is worse than one that stays quiet.
+  // The fetch is its own function now, and the silence lives there.
+  const fn = appSource.slice(appSource.indexOf("async function fetchSkillioUpdate"));
   const body = fn.slice(0, fn.indexOf("\n}\n"));
-  assert.match(body, /if \(!res\.ok\) return/);
-  assert.match(body, /!d\.update_available/);
-  // Nothing in the failure path writes to the page.
-  const katch = body.slice(body.indexOf("catch"));
-  assert.equal(/textContent|hidden\s*=/.test(katch), false);
+  assert.match(body, /if \(!res\.ok\) return null/);
+  assert.equal(/textContent|hidden\s*=/.test(body), false, "the fetch writes to the page");
+  assert.match(body.slice(body.indexOf("catch")), /return null/);
+  // And the load-time caller still refuses to announce a non-update.
+  const loader = appSource.slice(appSource.indexOf("async function checkSkillioUpdate"));
+  assert.match(loader.slice(0, loader.indexOf("\n}\n")), /!d\.update_available/);
 });
 
 // --- report ----------------------------------------------------------------

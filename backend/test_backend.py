@@ -771,6 +771,112 @@ class SkillioSelfUpdate(unittest.TestCase):
         self.assertNotEqual(seen["url"], app.TAGS_FEED)
 
 
+    def test_a_release_title_is_not_the_version(self):
+        """Publishing a GitHub Release renames the tag's atom entry.
+
+        The feed's <title> becomes the RELEASE NAME — "v1.7.2 —
+        plain-language scan failures" — while <link> and <id> keep the tag.
+        Reading the title made that whole headline the version, and the UI
+        printed "... scan failures is available".
+        """
+        feed = (
+            '<feed xmlns="http://www.w3.org/2005/Atom">'
+            "<entry>"
+            '<id>tag:github.com,2008:Repository/1353940689/v1.7.2</id>'
+            '<link rel="alternate" type="text/html"'
+            ' href="https://github.com/dnaiuxd/Skillio/releases/tag/v1.7.2"/>'
+            "<title>v1.7.2 \u2014 plain-language scan failures</title>"
+            "</entry>"
+            "</feed>"
+        ).encode()
+
+        tag, url = self._read_feed(feed)
+        self.assertEqual(tag, "v1.7.2")
+        self.assertEqual(url, "https://github.com/dnaiuxd/Skillio/releases/tag/v1.7.2")
+        # And it still compares as a version rather than as a sentence.
+        self.assertTrue(app._update_available("1.7.1", tag))
+        self.assertFalse(app._update_available("1.7.2", tag))
+
+    def test_a_tag_with_no_release_still_reads(self):
+        """The old shape: no release, so <title> is the tag itself."""
+        feed = (
+            '<feed xmlns="http://www.w3.org/2005/Atom">'
+            "<entry>"
+            '<id>tag:github.com,2008:Repository/1353940689/v1.7.1</id>'
+            '<link rel="alternate" type="text/html"'
+            ' href="https://github.com/dnaiuxd/Skillio/releases/tag/v1.7.1"/>'
+            "<title>v1.7.1</title>"
+            "</entry>"
+            "</feed>"
+        ).encode()
+        self.assertEqual(self._read_feed(feed)[0], "v1.7.1")
+
+    def test_the_tag_survives_a_feed_with_no_usable_link(self):
+        """id is the fallback, title the last resort — never a crash."""
+        feed = (
+            '<feed xmlns="http://www.w3.org/2005/Atom">'
+            "<entry>"
+            '<id>tag:github.com,2008:Repository/1353940689/v2.0.0</id>'
+            "<title>a name with no version in it at all</title>"
+            "</entry>"
+            "</feed>"
+        ).encode()
+        tag, url = self._read_feed(feed)
+        self.assertEqual(tag, "v2.0.0")
+        # No https link in the entry, so the feed itself is handed back
+        # rather than an href that goes nowhere.
+        self.assertEqual(url, app.SKILLIO_TAGS_FEED)
+
+    def test_a_pressed_button_gets_a_fresh_answer(self):
+        """The six-hour cache is for the silent check on load. "Check for
+        updates" answering from this morning is not a check."""
+        calls = []
+
+        def counted(feed=None):
+            calls.append(feed)
+            return ("v9.9.9", "https://example.invalid/tag")
+
+        app._skillio_update_cache.update({"at": 0.0, "value": None})
+        with mock.patch.object(app, "_latest_tag", counted):
+            app._skillio_update(now=1000.0)              # fills the cache
+            app._skillio_update(now=1001.0)              # served from it
+            self.assertEqual(len(calls), 1, "the cache stopped working")
+            app._skillio_update(now=1002.0, refresh=True)
+            self.assertEqual(len(calls), 2, "refresh did not bypass the cache")
+            # And the refreshed answer is what later cached reads return.
+            app._skillio_update(now=1003.0)
+            self.assertEqual(len(calls), 2)
+        app._skillio_update_cache.update({"at": 0.0, "value": None})
+
+    def test_the_endpoint_passes_refresh_through(self):
+        """A query param nobody forwards is a checkbox wired to nothing."""
+        seen = {}
+
+        def fake(refresh=False):
+            seen["refresh"] = refresh
+            return {"update_available": False}
+
+        with mock.patch.object(app, "_skillio_update", fake):
+            app.check_skillio_updates(refresh=True)
+            self.assertIs(seen["refresh"], True)
+            app.check_skillio_updates()
+            self.assertIs(seen["refresh"], False)
+
+    def _read_feed(self, payload: bytes):
+        class Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return payload
+
+        with mock.patch.object(app.urllib.request, "urlopen", lambda req, timeout=None: Resp()):
+            return app._latest_tag(app.SKILLIO_TAGS_FEED)
+
+
 class DeleteReclaimsSpace(unittest.TestCase):
     """SQLite keeps freed pages inside the file and reuses them; it does not
     shrink on DELETE. "Delete permanently" is the one irreversible action in

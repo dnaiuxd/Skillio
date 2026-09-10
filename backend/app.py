@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -440,22 +441,39 @@ SKILLIO_TAGS_FEED = f"{SKILLIO_REPO}/tags.atom"
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
 
+def _entry_tag(entry, href: Optional[str]) -> str:
+    """The tag an atom entry is about, preferring the machine-written fields.
+
+    <title> is the RELEASE NAME once a release exists for the tag: publishing
+    one called "v1.7.2 — plain-language scan failures" turned that whole
+    headline into the version, and the UI printed "v1.7.2 — plain-language
+    scan failures is available". The link and the id keep the exact tag
+    either way, so they are read first and the title is the last resort.
+    """
+    if href and "/releases/tag/" in href:
+        return urllib.parse.unquote(href.rsplit("/releases/tag/", 1)[1]).strip()
+    entry_id = (entry.findtext(f"{_ATOM}id") or "").strip()
+    if "/" in entry_id:
+        return entry_id.rsplit("/", 1)[1].strip()
+    return (entry.findtext(f"{_ATOM}title") or "").strip()
+
+
 def _latest_tag(feed: str = TAGS_FEED) -> tuple[str, str]:
     """Newest version tag and its GitHub URL. Raises on any failure."""
     req = urllib.request.Request(feed, headers={"User-Agent": "skillio"})
     with urllib.request.urlopen(req, timeout=10) as resp:
         root = ElementTree.fromstring(resp.read())
     for entry in root.findall(f"{_ATOM}entry"):  # newest first
-        title = (entry.findtext(f"{_ATOM}title") or "").strip()
-        if _parse_version(title):
-            # The entry's own link, rather than a guessed /releases/tag/ URL
-            # that need not exist if the project only tags.
-            link = entry.find(f"{_ATOM}link")
-            href = link.get("href") if link is not None else None
+        # The entry's own link, rather than a guessed /releases/tag/ URL
+        # that need not exist if the project only tags.
+        link = entry.find(f"{_ATOM}link")
+        href = link.get("href") if link is not None else None
+        tag = _entry_tag(entry, href)
+        if _parse_version(tag):
             # This ends up in an href, so only ever hand back a real https URL.
             if not (href or "").startswith("https://"):
                 href = feed
-            return title, href
+            return tag, href
     raise RuntimeError("no version tags in the feed")
 
 
@@ -493,17 +511,25 @@ SKILLIO_UPDATE_TTL_SECONDS = 6 * 3600
 _skillio_update_cache: dict[str, object] = {"at": 0.0, "value": None}
 
 
-def _skillio_update(now: Optional[float] = None) -> dict:
+def _skillio_update(now: Optional[float] = None, refresh: bool = False) -> dict:
     """Is there a newer Skillio than the one running? Never raises.
 
     A failure here is not worth a broken page: the repo may be private, the
     machine may be offline, GitHub may be rate-limiting. Any of those report
     "nothing to tell you", which is also the honest answer — we do not know
     of an update. It is never reported the other way round.
+
+    refresh skips the cache. The six-hour hold is right for the silent check
+    on page load and wrong for a button someone just pressed: "Check for
+    updates" that answers from this morning is not a check.
     """
     now = time.time() if now is None else now
     cached = _skillio_update_cache
-    if cached["value"] is not None and now - float(cached["at"]) < SKILLIO_UPDATE_TTL_SECONDS:
+    if (
+        not refresh
+        and cached["value"] is not None
+        and now - float(cached["at"]) < SKILLIO_UPDATE_TTL_SECONDS
+    ):
         return dict(cached["value"])  # a copy; callers must not edit the cache
 
     result = {
@@ -528,8 +554,8 @@ def _skillio_update(now: Optional[float] = None) -> dict:
 
 
 @app.get("/api/updates/skillio")
-def check_skillio_updates() -> dict:
-    return _skillio_update()
+def check_skillio_updates(refresh: bool = False) -> dict:
+    return _skillio_update(refresh=refresh)
 
 
 @app.get("/api/health")

@@ -77,9 +77,21 @@ Then pick one of the three ways to run it below. If you're not sure,
 
 ### Update it
 
-Skillio tells you when there's a newer release: a small tag appears beside
-the wordmark in the header, linking to it. The check runs on load and the
-answer is cached for six hours, so it costs nothing.
+Skillio tells you when there's a newer release, quietly or loudly depending
+on whether you asked:
+
+- **On load** — a small tag beside the wordmark in the header, linking to
+  the release. The answer is cached for six hours, so a reload costs
+  nothing.
+- **When you press Check for updates** — an amber banner across the top of
+  the page, with the release behind one link and a ✕ to put it away. That
+  button checks *both* SkillSpector and Skillio, and it skips the cache:
+  a check you asked for reads the feed now, not this morning. Dismiss the
+  banner and the header tag takes the news back — the update hasn't gone
+  anywhere, it just stops shouting.
+
+Nothing announces itself on load beyond that tag, and a check that fails
+says nothing at all.
 
 Updating is a `git pull` and a restart. Which restart depends on how you
 run it:
@@ -370,20 +382,27 @@ start. Open **http://localhost:8787**.
   markup. The gap between the name and its version matches the one the
   separator makes on the other side, so the three parts sit at the same
   optical distance.
-- **A new release shows as a tag beside the wordmark** in the header. The
-  check runs on page load but the answer is cached server-side for six
-  hours, so a reload costs nothing, and a failure is silent — an app that
-  nags about its own update check failing is worse than one that says
+- **A new release of Skillio shows as a tag beside the wordmark** in the
+  header. The check runs on page load but the answer is cached server-side
+  for six hours, so a reload costs nothing, and a failure is silent — an app
+  that nags about its own update check failing is worse than one that says
   nothing. It reads the repository's `tags.atom`, which GitHub serves only
   for public repositories — so if you fork this and make yours private, the
   feed 404s and the tag simply never appears. That is the failure mode by
-  design: silence, never a false "you're up to date".
-- **Check for updates** in the sidebar compares your installed
-  `skillspector` against the newest tag on NVIDIA's repo and links to it.
-  It runs only when you click it — nothing is checked on load, on a
-  schedule, or in the background — and it is the only outbound call this
-  app makes; everything else is local. Versions are compared as numbers,
-  not text, so 2.10.0 correctly outranks 2.9.0.
+  design: silence, never a false "you're up to date". The version comes from
+  the entry's tag rather than its title: publishing a GitHub Release renames
+  the feed entry to the release *name*, and reading that printed the whole
+  headline where a version belonged.
+- **Check for updates** in the sidebar checks both tools at once —
+  your installed `skillspector` against the newest tag on NVIDIA's repo, and
+  Skillio against its own. It runs only when you click it: nothing is
+  checked on a schedule or in the background, and these are the only
+  outbound calls this app makes. Versions are compared as numbers, not text,
+  so 2.10.0 correctly outranks 2.9.0. A pressed button bypasses the
+  six-hour cache, because a check that answers from earlier in the day is
+  not a check. SkillSpector's answer lands in a card in the rail — every
+  outcome in the same box, each with a ✕ — and a new Skillio release raises
+  the banner instead, since that one has somewhere to send you.
 - Data lives in `backend/skillio.db` (SQLite, git-ignored) —
   delete it to reset the log.
 - **Theme** follows your OS by default; the sun/moon switch in the
@@ -394,6 +413,17 @@ start. Open **http://localhost:8787**.
   the light ones reused. Links use Primer's `accent.fg` in both — those are dark by design and would fail contrast on a dark
   ground. Every pairing the CSS actually uses was checked against WCAG
   2.2 AA (text ≥ 4.5:1, control boundaries ≥ 3:1).
+- **The ⓘ triggers and the ✕ controls are the size of their glyphs**, not
+  44px squares around them: at 44 the mark sat inside a 13px dead ring, so a
+  click or a hover well clear of the icon still fired it. 24×24 is what you
+  see and what WCAG 2.2 AA asks for (2.5.8); coarse pointers get the 44px
+  floor back through an invisible overlay, since a finger has no 3px
+  precision and there is no cursor to give the dead ring away.
+- **Each ⓘ carries a tooltip**, on hover *and* on focus, whose words are its
+  `aria-label` — one copy, so what is shown and what is announced cannot
+  drift. Esc dismisses it without moving the pointer, and the tip is a child
+  of its trigger so the pointer can move onto it without it vanishing
+  (WCAG 2.2 1.4.13).
 - SkillSpector fails closed: a LOW-band result that would normally read
   SAFE is downgraded to CAUTION whenever the scan was degraded or
   incomplete. That's why a skill can score 0 and still say Caution — the
