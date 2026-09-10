@@ -58,6 +58,7 @@
         <span id="health" class="health">checking installation…</span>
         <button type="button" id="update-check" class="update-check">Check for updates</button>
       </div>
+      <p id="install-hint" class="install-hint" role="status" hidden></p>
       <p id="update-result" class="update-result" role="status" hidden></p>
       <h2 class="scan-sidebar-title">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -241,9 +242,9 @@
   <!-- Native <dialog>: showModal() brings the focus trap, Esc-to-close, the
        inert background and focus restoration with it, so none of that has to
        be hand-rolled. -->
-  <dialog class="about-dialog" id="about-dialog" aria-labelledby="about-dialog-title">
-    <div class="about-dialog-body">
-      <h2 class="about-dialog-title" id="about-dialog-title">What is Skillio?</h2>
+  <dialog class="info-dialog" id="about-dialog" aria-labelledby="about-dialog-title">
+    <div class="info-dialog-body">
+      <h2 class="info-dialog-title" id="about-dialog-title">What is Skillio?</h2>
       <p>
         Skillio runs NVIDIA's SkillSpector over the things an agent is about to
         trust — an agent skill from a git URL, a folder or a <code>.zip</code>,
@@ -256,7 +257,63 @@
         re-scan flagged when it comes back different from the one you approved,
         and an install decision recorded against each one.
       </p>
-      <button type="button" class="btn about-dialog-close" id="about-close" autofocus>Close</button>
+      <button type="button" class="btn info-dialog-close" id="about-close" autofocus>Close</button>
+    </div>
+  </dialog>
+
+  <dialog class="info-dialog" id="skillspector-help-dialog"
+    aria-labelledby="skillspector-help-title">
+    <div class="info-dialog-body">
+      <h2 class="info-dialog-title" id="skillspector-help-title" tabindex="-1" autofocus>Installing &amp; upgrading SkillSpector</h2>
+      <p>
+        Skillio doesn't bundle SkillSpector — it runs whatever
+        <code>skillspector</code> it finds on your PATH.
+        <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener noreferrer">uv</a>
+        installs each command-line tool into its own isolated environment, so
+        SkillSpector's dependencies can't collide with anything else on your
+        machine, and leaves a small shim at
+        <code>~/.local/bin/skillspector</code> that never moves.
+      </p>
+
+      <h3 class="info-dialog-subtitle">Install it</h3>
+      <p><code class="info-dialog-command">uv tool install git+https://github.com/NVIDIA/skillspector.git</code></p>
+      <p>Needs <code>uv</code> itself first. Skillio never installs anything on
+        your behalf — you run these yourself, in a terminal.</p>
+
+      <h3 class="info-dialog-subtitle">Upgrade it</h3>
+      <p><code class="info-dialog-command">uv tool upgrade skillspector</code></p>
+      <p>
+        Re-resolves SkillSpector from the same source and rebuilds that
+        isolated environment in place. It was installed from git with no
+        pinned version, so this takes whatever is on the default branch —
+        usually the release named above, occasionally a little ahead of it.
+        The shim path doesn't change, so Skillio keeps finding it.
+      </p>
+
+      <h3 class="info-dialog-subtitle">Afterwards</h3>
+      <p>
+        <strong>Your scan log is never touched</strong> by either command — it
+        lives in Skillio's own database, separately. Once the command
+        finishes, use <strong>Check for updates</strong> again: Skillio re-reads
+        the installed version rather than trusting what it saw last.
+      </p>
+
+      <h3 class="info-dialog-subtitle">If it still isn't found</h3>
+      <p>
+        <code>skillspector</code> has to be on the PATH of the process running
+        Skillio, which is not always your shell's. A launchd background service
+        inherits nothing from your terminal — it carries its own PATH, written
+        when you installed it. If you installed SkillSpector <em>after</em>
+        setting up that service, re-run
+        <code>./macos/install-service.sh</code> so the agent picks up the new
+        location.
+      </p>
+
+      <p>
+        <a href="https://github.com/NVIDIA/skillspector" target="_blank" rel="noopener noreferrer">NVIDIA/skillspector on GitHub ↗</a>
+      </p>
+
+      <button type="button" class="btn info-dialog-close" id="skillspector-help-close">Close</button>
     </div>
   </dialog>
 

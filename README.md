@@ -245,6 +245,15 @@ start. Open **http://localhost:8787**.
 - Fonts are self-hosted (latin `.woff2` subsets in `frontend/fonts/`, no
   CDN call): Noto Sans for headings and body/UI, Noto Sans Mono for code.
   Licenses sit next to the files (both are OFL).
+- **The commands are on the page, not on GitHub.** Both states that ask you
+  to run something — "not found on PATH" and "an update is available" — show
+  the exact `uv tool` command inline, with one line saying where to run it
+  and that your scan log isn't touched. An ⓘ beside either opens a single
+  **Installing & upgrading SkillSpector** dialog: what `uv tool` does with
+  its isolated environments, why the shim path never changes, what an
+  unpinned git install actually fetches, and what to do when `skillspector`
+  still isn't found — including the launchd case, where the agent carries
+  its own PATH and needs `./macos/install-service.sh` re-run.
 - **Check for updates** in the sidebar compares your installed
   `skillspector` against the newest tag on NVIDIA's repo and links to it.
   It runs only when you click it — nothing is checked on load, on a

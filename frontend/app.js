@@ -46,6 +46,9 @@ const els = {
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
   updateCheck: document.getElementById("update-check"),
+  installHint: document.getElementById("install-hint"),
+  helpDialog: document.getElementById("skillspector-help-dialog"),
+  helpClose: document.getElementById("skillspector-help-close"),
   aboutBtn: document.getElementById("about-btn"),
   aboutDialog: document.getElementById("about-dialog"),
   aboutClose: document.getElementById("about-close"),
@@ -377,13 +380,13 @@ async function checkForUpdates() {
       headRow.append(a);
     }
     if (notice.command) {
-      const label = document.createElement("span");
-      label.className = "update-command-label";
-      label.textContent = "Update with";
-      const code = document.createElement("code");
-      code.className = "update-command";
-      code.textContent = notice.command;
-      els.updateResult.append(label, code);
+      renderCommandBlock(
+        els.updateResult,
+        "Update with",
+        notice.command,
+        "Run this in a terminal, then check again. Your scan log isn't touched.",
+        "How installing and upgrading SkillSpector works"
+      );
     }
   } catch (e) {
     els.updateResult.textContent = `Update check failed — ${e.message}`;
@@ -393,6 +396,50 @@ async function checkForUpdates() {
     els.updateCheck.disabled = false;
     els.updateCheck.textContent = "Check for updates";
   }
+}
+
+// Static markup, not user data — the same glyph the LLM and About triggers
+// use, so all three info affordances read as one thing.
+const INFO_ICON_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />' +
+  '<path d="M12 11.25v4.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />' +
+  '<circle cx="12" cy="7.9" r="1.05" fill="currentColor" />' +
+  "</svg>";
+
+// One explanation, reachable from wherever a skillspector command is shown.
+// The point is that neither card sends you to GitHub to find out what the
+// command you are about to paste into a terminal actually does.
+function makeHelpButton(label) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "info-btn info-btn--inline";
+  btn.setAttribute("aria-label", label);
+  btn.innerHTML = INFO_ICON_SVG;
+  btn.addEventListener("click", () => els.helpDialog.showModal());
+  return btn;
+}
+
+// "Update with  ⓘ" / "Install with  ⓘ" over a copyable command, then one
+// plain line answering the question people actually have: where do I run
+// this, and does it touch my data.
+function renderCommandBlock(parent, labelText, command, note, helpLabel) {
+  const row = document.createElement("div");
+  row.className = "command-row";
+  const label = document.createElement("span");
+  label.className = "update-command-label";
+  label.textContent = labelText;
+  row.append(label, makeHelpButton(helpLabel));
+
+  const code = document.createElement("code");
+  code.className = "update-command";
+  code.textContent = command;
+
+  const hint = document.createElement("span");
+  hint.className = "command-note";
+  hint.textContent = note;
+
+  parent.append(row, code, hint);
 }
 
 function showAppVersion(version) {
@@ -413,11 +460,22 @@ async function checkHealth() {
     if (data.skillspector_installed) {
       els.health.textContent = `NVIDIA skillspector ready — ${data.version || "installed"}`;
       els.health.className = "health ok";
+      els.installHint.hidden = true;
+      els.installHint.textContent = "";
     } else {
-      els.health.innerHTML =
-        "NVIDIA skillspector not found on PATH — " +
-        '<a href="https://github.com/NVIDIA/skillspector" target="_blank" rel="noopener noreferrer">install it first ↗</a>';
+      els.health.textContent = "NVIDIA skillspector not found on PATH";
       els.health.className = "health bad";
+      // This is the state where sending someone to GitHub stops them using
+      // the app at all, so the command and the explanation come to them.
+      els.installHint.textContent = "";
+      els.installHint.hidden = false; // reveal before writing, as elsewhere
+      renderCommandBlock(
+        els.installHint,
+        "Install with",
+        "uv tool install git+https://github.com/NVIDIA/skillspector.git",
+        "Run this in a terminal, then reload this page. Needs uv.",
+        "How installing and upgrading SkillSpector works"
+      );
     }
   } catch (e) {
     els.health.textContent = "backend unreachable";
@@ -1234,6 +1292,10 @@ els.scanInput.addEventListener("input", () => {
 // trap, Esc-to-close and inert background, and it restores focus to the
 // trigger on close without being asked.
 els.aboutBtn.addEventListener("click", () => els.aboutDialog.showModal());
+els.helpClose.addEventListener("click", () => els.helpDialog.close());
+els.helpDialog.addEventListener("click", (e) => {
+  if (e.target === els.helpDialog) els.helpDialog.close();
+});
 els.aboutClose.addEventListener("click", () => els.aboutDialog.close());
 // The backdrop is a pseudo-element, so a click on it targets the <dialog>
 // itself; a click on the content targets something inside the body div.

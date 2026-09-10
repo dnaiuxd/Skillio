@@ -608,6 +608,44 @@ test("an empty findings list cannot wipe the truncation notice", () => {
   assert.match(branch, /appendChild/);
 });
 
+test("the SkillSpector help dialog is a real modal with a name", () => {
+  assert.match(html, /<dialog[^>]*id="skillspector-help-dialog"/);
+  assert.match(html, /id="skillspector-help-close"/);
+  const labelledBy = html.match(/<dialog[^>]*id="skillspector-help-dialog"[^>]*aria-labelledby="([^"]+)"/);
+  assert.ok(labelledBy, "the help dialog has no aria-labelledby");
+  assert.match(html, new RegExp(`id="${labelledBy[1]}"`));
+  assert.match(appSource, /helpDialog\.showModal\(\)/);
+});
+
+test("the help dialog opens at its own title, not scrolled past it", () => {
+  // autofocus on the Close button at the far end scrolls a long dialog to the
+  // bottom on open, so it lands mid-sentence with the heading off-screen.
+  const dlg = html.slice(html.indexOf('id="skillspector-help-dialog"'));
+  const body = dlg.slice(0, dlg.indexOf("</dialog>"));
+  assert.match(body, /<h2[^>]*id="skillspector-help-title"[^>]*autofocus/);
+  assert.equal(/id="skillspector-help-close"[^>]*autofocus/.test(body), false);
+});
+
+test("neither command state sends you to GitHub to find out what to run", () => {
+  // The whole point: the command and its explanation come to the user. The
+  // not-installed state used to be a bare "install it first" link out.
+  assert.equal(/install it first/i.test(appSource), false);
+  const health = appSource.slice(appSource.indexOf("function checkHealth"));
+  const branch = health.slice(0, health.indexOf("function isScanning"));
+  assert.match(branch, /renderCommandBlock\(/);
+  assert.match(branch, /uv tool install/);
+});
+
+test("the inline info trigger is still a 44px target", () => {
+  // It sits in a line of running text, so it is easy to shrink it to fit.
+  // The project's floor is 44, met with transparent padding, not a small box.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const rule = css.match(/\.info-btn--inline\s*\{([^}]*)\}/);
+  assert.ok(rule, "no .info-btn--inline rule");
+  assert.match(rule[1], /width:\s*44px/);
+  assert.match(rule[1], /height:\s*44px/);
+});
+
 // --- report ----------------------------------------------------------------
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
