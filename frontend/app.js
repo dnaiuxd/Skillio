@@ -46,7 +46,6 @@ const els = {
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
   updateCheck: document.getElementById("update-check"),
-  brandLink: document.getElementById("brand-link"),
   skillioUpdate: document.getElementById("skillio-update"),
   installHint: document.getElementById("install-hint"),
   helpDialog: document.getElementById("skillspector-help-dialog"),
@@ -448,13 +447,9 @@ function showAppVersion(version) {
   if (!version) return;
   // Two credit lines exist — the rail on desktop, the footer on narrow — and
   // only one is ever visible, so both are filled rather than picking one.
+  // The word "Skillio" beside it is its own element now — it is the link to
+  // the repository — so this carries the number alone.
   for (const el of document.querySelectorAll("[data-app-version]")) {
-    el.textContent = `Skillio v${version}`;
-    el.hidden = false;
-  }
-  // The header sits beside the wordmark, which already says Skillio — so it
-  // carries the number alone rather than repeating the name next to itself.
-  for (const el of document.querySelectorAll("[data-app-version-only]")) {
     el.textContent = `v${version}`;
     el.hidden = false;
   }
@@ -484,8 +479,14 @@ async function checkHealth() {
     const data = await res.json();
     showAppVersion(data.skillio_version);
     // Set rather than hardcoded in the markup, so the repository URL lives in
-    // exactly one place. Until it arrives the brand is simply not a link.
-    if (data.repo_url) els.brandLink.href = data.repo_url;
+    // exactly one place. Both credit lines exist — the rail on desktop, the
+    // footer on narrow — so both are filled. Until this arrives the word is
+    // simply not a link.
+    if (data.repo_url) {
+      for (const el of document.querySelectorAll("[data-repo-link]")) {
+        el.href = data.repo_url;
+      }
+    }
     if (data.skillspector_installed) {
       els.health.textContent = `NVIDIA skillspector ready — ${data.version || "installed"}`;
       els.health.className = "health ok";

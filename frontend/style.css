@@ -179,36 +179,14 @@ button {
 
 /* The logo is a lockup — mark plus wordmark — so the <h1> holds it directly
    and carries its accessible name in visually hidden text. */
-/* The 1.1em gap is the one the rail credit already uses either side of its
-   separator, borrowed so the wordmark sits off its version by the same
-   optical distance in both places. */
+/* The wordmark carries the header on its own. The version and the link to
+   the repository live on the credit line instead, where the provenance
+   already was. Only the update tag joins it here, 16px off the logo. */
 .topbar-title {
   display: flex;
   align-items: center;
-  gap: 1.1em;
+  gap: 16px;
   margin: 0;
-}
-
-/* The logo is the link. min-height takes the target to 44px around a 40px
-   logo without moving anything: the topbar's own padding absorbs it. */
-.topbar-brand {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  border-radius: 4px;
-  text-decoration: none;
-}
-
-.topbar-brand:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 4px;
-}
-
-/* Quiet provenance, matching the rail credit's treatment. */
-.topbar-version {
-  font-size: var(--text-sm);
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
 }
 
 /* Borrows .target-tag's pill, and says what it is in words — colour alone
@@ -221,7 +199,6 @@ button {
   position: relative;
   display: inline-flex;
   align-items: center;
-  margin-left: -0.5em;
   padding: 3px 10px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
@@ -631,20 +608,32 @@ main {
    was tried and rejected on visual grounds; this is the owner's call on their
    own byline, not an oversight. The focus ring below still marks it for
    keyboard users, and the target is the full 44px line. */
-.credit-link {
+.credit-link,
+.brand-link {
   color: inherit;
   text-decoration: none;
 }
 
-.credit-link:hover {
+.credit-link:hover,
+.brand-link:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.credit-link:focus-visible {
+.credit-link:focus-visible,
+.brand-link:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
   border-radius: 2px;
+}
+
+/* "Skillio" is the link to the repository; the version sits beside it as
+   plain text. The gap matches the one the separator makes on the other side
+   — the dot's two 1.1em margins plus its own advance — so the three parts of
+   the line sit at the same optical distance from each other rather than the
+   name being crowded against its number. Tuned against the measured gap. */
+.brand-link {
+  margin-right: 2.5em;
 }
 
 .rail-credit {

@@ -564,7 +564,8 @@ test("the credit link's hover-only underline stays documented", () => {
   // their own byline — but a deliberate deviation is only deliberate while
   // the reasoning travels with it, so this fails if the note is dropped.
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
-  const at = css.indexOf(".credit-link {");
+  // Shared with .brand-link now, so match the selector rather than "{".
+  const at = css.search(/^\.credit-link[,{\s]/m);
   assert.notEqual(at, -1, "no .credit-link rule in style.css");
   assert.match(css.slice(Math.max(0, at - 900), at), /KNOWN, DELIBERATE DEVIATION/);
   assert.match(css.slice(Math.max(0, at - 900), at), /1\.4\.1/);
@@ -646,23 +647,32 @@ test("the inline info trigger is still a 44px target", () => {
   assert.match(rule[1], /height:\s*44px/);
 });
 
-test("the wordmark links to the repository, with a name of its own", () => {
-  // An <img alt=""> inside a link leaves the link nameless, so the visually
-  // hidden text has to sit INSIDE the anchor, not beside it in the h1.
-  const brand = html.match(/<a class="topbar-brand"[\s\S]*?<\/a>/);
-  assert.ok(brand, "no .topbar-brand link");
-  assert.match(brand[0], /visually-hidden">[^<]*GitHub/);
+test("the credit line's Skillio is the link to the repository", () => {
+  const links = [...html.matchAll(/<a class="brand-link"[^>]*>([^<]*)<\/a>/g)];
+  assert.equal(links.length, 2, "expected one in the rail and one in the footer");
+  for (const m of links) assert.equal(m[1].trim(), "Skillio");
   // The URL comes from /api/health so there is one copy of it, in the backend.
-  assert.equal(/href="https?:/.test(brand[0]), false, "repo URL hardcoded in markup");
-  assert.match(appSource, /brandLink\.href = data\.repo_url/);
+  assert.equal(/class="brand-link"[^>]*href="https?:/.test(html), false,
+    "repo URL hardcoded in markup");
+  assert.match(appSource, /data-repo-link[\s\S]{0,120}?\.href = data\.repo_url/);
 });
 
-test("the header version says the number, not the name twice", () => {
-  // It sits beside a wordmark that already reads SKILLIO.
-  assert.match(html, /data-app-version-only/);
+test("the header is the wordmark alone", () => {
+  const h1 = html.match(/<h1 class="topbar-title">[\s\S]*?<\/h1>/);
+  assert.ok(h1, "no topbar title");
+  assert.equal(/data-app-version/.test(h1[0]), false, "version is back in the header");
+  assert.equal(/topbar-brand/.test(h1[0]), false, "wordmark is a link again");
+  // The update tag is the one thing that does belong up there.
+  assert.match(h1[0], /id="skillio-update"/);
+});
+
+test("the version renders as the number alone", () => {
+  // "Skillio" sits beside it as its own element — the link — so repeating
+  // the name here would print it twice in a row.
   const fn = appSource.slice(appSource.indexOf("function showAppVersion"));
-  const body = fn.slice(0, fn.indexOf("\n}"));
-  assert.match(body, /data-app-version-only[\s\S]*`v\$\{version\}`/);
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /`v\$\{version\}`/);
+  assert.equal(/Skillio v\$\{version\}/.test(body), false);
 });
 
 test("the update tag starts hidden and is checked on load", () => {
