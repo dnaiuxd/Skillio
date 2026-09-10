@@ -37,6 +37,14 @@ fail() { printf '\n error: %s\n' "$*" >&2; exit 1; }
 bootout_if_loaded() {
   # bootout exits non-zero when the label isn't loaded; that's not an error.
   launchctl bootout "$DOMAIN/$1" 2>/dev/null || true
+  # It also returns BEFORE launchd has finished tearing the job down, so a
+  # bootstrap issued straight afterwards fails with "Bootstrap failed: 5:
+  # Input/output error" — and leaves the plist on disk with nothing loaded,
+  # which is the app simply not running. Wait for the label to really go.
+  for _ in $(seq 1 40); do
+    launchctl print "$DOMAIN/$1" >/dev/null 2>&1 || return 0
+    sleep 0.25
+  done
 }
 
 # --- uninstall -------------------------------------------------------------
@@ -236,7 +244,14 @@ for legacy in "${LEGACY_LABELS[@]}"; do
   fi
 done
 bootout_if_loaded "$LABEL"
-launchctl bootstrap "$DOMAIN" "$PLIST"
+# Belt and braces: even after the label is gone, launchd can still refuse the
+# bootstrap for a moment. Retry, then let the real error through on the last
+# attempt rather than swallowing it.
+for attempt in 1 2 3 4; do
+  launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null && break
+  [ "$attempt" = "4" ] && launchctl bootstrap "$DOMAIN" "$PLIST"
+  sleep 1
+done
 
 # --- verify ----------------------------------------------------------------
 printf '\n  Waiting for the server'
