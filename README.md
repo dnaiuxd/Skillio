@@ -64,8 +64,15 @@ your agent obeys and malicious instructions there have no code signature.
 ## 2. Get the GUI
 
 ```bash
-git clone https://github.com/dnaiuxd/skillio.git
+git clone https://github.com/dnaiuxd/skillio.git Skillio
 ```
+
+The trailing `Skillio` is the folder name. Without it git names the
+directory after the repository — lowercase `skillio` — and that is the one
+place the product's name would appear in lower case, since the folder is
+what you see in Finder and in the Terminal window title when you launch it.
+Everything inside the app already reads Skillio: the browser tab, the
+installed app's name in the Dock, and the header.
 
 ### Run it — one-click (macOS)
 
@@ -192,11 +199,14 @@ service on the machine means the two can never contend for a port.
 ### Run it — manually
 
 ```bash
-cd skillio/backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app:app --reload --port 8787
+cd Skillio/backend
+uv venv --python '>=3.11' .venv          # or: python3 -m venv .venv
+uv pip install --python .venv/bin/python -r requirements.txt
+.venv/bin/uvicorn app:app --reload --port 8787
 ```
+
+`Skillio.command` does all of this for you, including picking the Python —
+this is only for when you want the reloader.
 
 The backend serves the static frontend, so there's nothing else to
 start. Open **http://localhost:8787**.
