@@ -72,6 +72,48 @@ the repository, and the repository is capitalised, so the product's name
 reads the same everywhere: the folder in Finder, the Terminal window title
 when you launch it, the browser tab, and the app's name in the Dock.
 
+Then pick one of the three ways to run it below. If you're not sure,
+**one-click** is the one to start with.
+
+### Update it
+
+Skillio tells you when there's a newer release: a small tag appears beside
+the wordmark in the header, linking to it. The check runs on load and the
+answer is cached for six hours, so it costs nothing.
+
+Updating is a `git pull` and a restart. Which restart depends on how you
+run it:
+
+```bash
+cd ~/Skillio
+git pull
+```
+
+- **One-click** — close the Terminal window and double-click
+  `Skillio.command` again. It syncs dependencies on every start, so there
+  is nothing else to do.
+- **Background service** — re-run the installer:
+
+  ```bash
+  ./macos/install-service.sh
+  ```
+
+  Not `launchctl kickstart`. The plist runs uvicorn and nothing else, so a
+  bare restart picks up new *code* but never new *dependencies* — if a
+  release raises a version floor in `requirements.txt`, the service would
+  start against the old packages and fail into a log nobody is watching.
+  The installer syncs them, rewrites the plist and restarts, and it
+  remembers your `SKILLSPECTOR_PROVIDER` from the previous install.
+- **Manual** — re-run the `uv pip install` line, then restart uvicorn.
+
+**Your scan log survives all of this.** It lives in
+`backend/skillio.db`, which is git-ignored, so a pull never touches it.
+The same is true of the Python environment in `backend/.venv`.
+
+To update **SkillSpector** — a separate tool, on its own release
+schedule — use **Check for updates** in the sidebar instead. That's
+covered under [Using it](#using-it).
+
 ### Run it — one-click (macOS)
 
 Double-click **`Skillio.command`** in the repo root. On the first

@@ -82,6 +82,27 @@ UVICORN="$REPO/backend/.venv/bin/uvicorn"
        happens when the repo is moved or renamed. Rebuild it:
          $VENV_SETUP"
 
+# --- bring dependencies up to date -----------------------------------------
+# The plist runs uvicorn and nothing else, so a service restart picks up new
+# CODE but never new DEPENDENCIES. That makes this script the update path: a
+# `git pull` that raises a version floor in requirements.txt would otherwise
+# leave the service starting against the old packages, and the failure lands
+# in a log nobody is watching. Which installer to use depends on what the
+# venv contains — `uv venv` ships no pip — not on whether uv is on PATH.
+if [ "$DRY_RUN" -eq 0 ]; then
+  say "Syncing dependencies…"
+  if [ -x "$REPO/backend/.venv/bin/pip" ]; then
+    (cd "$REPO/backend" && .venv/bin/pip install --quiet -r requirements.txt) \
+      || fail "Could not install dependencies. Try: $VENV_SETUP"
+  elif command -v uv >/dev/null 2>&1; then
+    (cd "$REPO/backend" && uv pip install --quiet --python .venv/bin/python -r requirements.txt) \
+      || fail "Could not install dependencies. Try: $VENV_SETUP"
+  else
+    fail "This venv was built by uv, which is no longer installed.
+       Rebuild it: $VENV_SETUP"
+  fi
+fi
+
 SKILLSPECTOR="$(command -v skillspector || true)"
 if [ -n "$SKILLSPECTOR" ]; then
   SKILLSPECTOR_BIN_DIR="$(cd "$(dirname "$SKILLSPECTOR")" && pwd)"
