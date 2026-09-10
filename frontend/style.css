@@ -425,11 +425,24 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* The two separators either side of the version. Explicit margins rather
+   than spaces inside the content, which collapse unpredictably next to a
+   flex boundary. Neither sits inside a link, so no dot joins a hover
+   underline or a click target.
+   They are built differently on purpose. The first is a real element, so it
+   survives while .app-version is still hidden — which it is on every load
+   until /api/health answers, and for good if it never does — leaving
+   "Skillio · dhavalnaik.com" instead of the two jammed together. The second
+   hangs off the version itself, so it comes and goes with it rather than
+   leaving a dot with nothing on one side of it. */
+.credit-sep,
+.app-version::after {
+  margin: 0 1.1em;
+  color: var(--ink-soft);
+}
+
 .app-version::after {
   content: "·";
-  /* Explicit on both sides rather than spaces inside the content string,
-     which collapse unpredictably next to a flex boundary. */
-  margin: 0 1.1em;
 }
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
@@ -628,13 +641,9 @@ main {
 }
 
 /* "Skillio" is the link to the repository; the version sits beside it as
-   plain text. The gap matches the one the separator makes on the other side
-   — the dot's two 1.1em margins plus its own advance — so the three parts of
-   the line sit at the same optical distance from each other rather than the
-   name being crowded against its number. Tuned against the measured gap. */
-.brand-link {
-  margin-right: 2.5em;
-}
+   plain text, with the same dot between them as the one before the credit.
+   The spacing is the separator's own margins now rather than a hand-tuned
+   figure standing in for them. */
 
 .rail-credit {
   margin: auto 0 0;
