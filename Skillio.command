@@ -29,14 +29,57 @@ if curl -fs -o /dev/null --max-time 2 "$URL/api/health"; then
   exit 0
 fi
 
-# First run: create the venv. Then always sync deps with requirements.txt
-# (a no-op in a second when nothing changed).
-if [ ! -x .venv/bin/python3 ]; then
-  echo "First run — setting up the Python environment (this takes a minute)…"
-  python3 -m venv .venv
-  .venv/bin/pip install --quiet --upgrade pip
+# The newest stable Python at or above this. uv downloads a matching
+# interpreter when the machine hasn't got one, which is the whole point:
+# macOS ships Python 3.9, which is past end-of-life, and a venv built on
+# Apple's copy is also a symlink into the Command Line Tools — so it breaks
+# the next time those update. Without uv we fall back to whatever `python3`
+# is, which still works; you just don't get the upgrade.
+PYTHON_SPEC=">=3.11"
+
+# A venv built by `python3 -m venv` writes an absolute shebang into every
+# console script, so renaming or moving the repo leaves .venv/bin/uvicorn
+# present and executable but pointing at a python that is no longer there.
+# Testing python3 alone misses this: the interpreter symlink is absolute too
+# and often still resolves, so the venv looks fine right up until exec fails.
+# uv's venvs use a relocatable `#!/bin/sh` shim and don't have the problem,
+# but the fallback path below does, so check what actually gets run.
+venv_is_usable() {
+  [ -x .venv/bin/python3 ] || return 1
+  .venv/bin/python3 --version >/dev/null 2>&1 || return 1
+  # Absent on a venv whose dependencies haven't been installed yet, which is
+  # a perfectly good venv — only a present-but-unrunnable one is broken.
+  [ ! -e .venv/bin/uvicorn ] || .venv/bin/uvicorn --version >/dev/null 2>&1
+}
+
+if ! venv_is_usable; then
+  if [ -e .venv ]; then
+    echo "The Python environment is broken — rebuilding it…"
+    rm -rf .venv
+  else
+    echo "First run — setting up the Python environment (this takes a minute)…"
+  fi
+  if command -v uv >/dev/null 2>&1; then
+    uv venv --python "$PYTHON_SPEC" .venv
+  else
+    python3 -m venv .venv
+    .venv/bin/pip install --quiet --upgrade pip
+  fi
 fi
-.venv/bin/pip install --quiet -r requirements.txt
+
+# `uv venv` leaves pip out on purpose, so which installer to use depends on
+# how this venv was built — not on whether uv is on PATH right now.
+if [ -x .venv/bin/pip ]; then
+  .venv/bin/pip install --quiet -r requirements.txt
+elif command -v uv >/dev/null 2>&1; then
+  uv pip install --quiet --python .venv/bin/python -r requirements.txt
+else
+  echo "This environment was built by uv, which is no longer installed."
+  echo "Delete backend/.venv and run this again to rebuild it."
+  exit 1
+fi
+
+echo "Python $(.venv/bin/python3 --version 2>&1 | cut -d' ' -f2)"
 
 # Open the browser once the server answers.
 (

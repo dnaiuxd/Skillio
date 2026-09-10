@@ -59,7 +59,15 @@ else
 fi
 
 # --- preflight -------------------------------------------------------------
-VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+# Kept in step with Skillio.command, which owns the real logic — it picks a
+# current Python through uv when uv is there, and falls back to the system
+# python3 when it isn't. Telling people `python3 -m venv` here would hand
+# them the end-of-life 3.9 the launcher now avoids.
+if command -v uv >/dev/null 2>&1; then
+  VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && uv venv --python '>=3.11' .venv && uv pip install --python .venv/bin/python -r requirements.txt"
+else
+  VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+fi
 UVICORN="$REPO/backend/.venv/bin/uvicorn"
 [ -x "$UVICORN" ] || fail "No venv found at $REPO/backend/.venv
        Create it first:

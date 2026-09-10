@@ -75,6 +75,23 @@ that it just starts the server and opens the app in your browser. Close
 the Terminal window it opens to stop the server. Double-clicking it
 again while it's already running simply reopens the tab.
 
+**Which Python you get.** macOS ships 3.9, which is past end-of-life, and
+a venv built on Apple's copy is a symlink into the Command Line Tools that
+breaks the next time those update. So if [uv](https://docs.astral.sh/uv/)
+is installed — and it already is, if you installed SkillSpector the
+documented way — the launcher builds the environment with
+`uv venv --python '>=3.11'`, which uses the newest stable Python on the
+machine and downloads one if there isn't a suitable one. Without uv it
+falls back to the system `python3`; the app still runs, you just don't get
+the upgrade.
+
+uv's environments are also relocatable — its console scripts use a
+`#!/bin/sh` shim rather than an absolute shebang — so moving or renaming
+the folder no longer breaks them. The launcher checks anyway: it runs
+`.venv/bin/uvicorn` rather than trusting the file to be there, because a
+stdlib venv survives a move with a working `python3` and a `uvicorn` that
+dies with "bad interpreter". If it finds one in that state it rebuilds it.
+
 ### Run it — always (background service, macOS)
 
 To have `http://localhost:8787` up permanently — started at login,
