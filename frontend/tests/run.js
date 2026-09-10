@@ -1002,11 +1002,17 @@ test("the tooltip meets 1.4.13 — focus, dismiss, hover", () => {
   // Hoverable comes from the tip being a CHILD of the trigger: moving the
   // pointer onto the tip is still hovering the button.
   assert.match(appSource, /btn\.appendChild\(tip\)/);
-  // Not hit-testable while hidden.
+  // Out of the layout entirely while hidden, not merely invisible: a
+  // visibility:hidden box still occupies space, and a 234px tip on a trigger
+  // near the right edge gave the page a horizontal scrollbar at 390px.
   const rule = css.match(/\n\.info-tip \{([^}]*)\}/);
   assert.ok(rule, "no .info-tip rule");
-  assert.match(rule[1], /visibility:\s*hidden/);
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\.info-tip \{ transition: none; \}/);
+  assert.match(rule[1], /display:\s*none/);
+  // Anchored to a declaration: the rule's own comment explains why
+  // visibility:hidden was wrong, and an unanchored match hits the prose.
+  assert.equal(/\n\s*visibility:\s*hidden;/.test(rule[1]), false,
+    "back to visibility, which still takes part in layout");
+  assert.match(rule[1], /max-width: min\(240px, calc\(100vw - 32px\)\)/);
 });
 
 test("the tooltip is drawn from tokens, and separates from an ink surface", () => {

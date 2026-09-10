@@ -1241,7 +1241,8 @@ main {
   left: -4px;
   z-index: 20;
   width: max-content;
-  max-width: min(240px, 60vw);
+  /* Never wider than the screen it has to fit on. */
+  max-width: min(240px, calc(100vw - 32px));
   padding: 7px 10px;
   /* A hairline of the page's own ground, not decoration: the chip is --ink,
      and so is .btn-primary directly below the LLM trigger, so without it the
@@ -1257,27 +1258,31 @@ main {
   line-height: 1.4;
   text-align: left;
   white-space: normal;
-  opacity: 0;
-  /* visibility, not display: it must not be hit-testable while hidden, and
-     it must still be able to transition. */
-  visibility: hidden;
-  transition: opacity 0.12s ease;
+  /* display, not visibility: a visibility:hidden box still takes part in
+     layout, so an invisible 234px tip hanging off an icon near the right
+     edge gave the whole page a horizontal scrollbar at 390px. The fade goes
+     with it — an instant tooltip is the norm anyway, and correctness on a
+     phone is worth more than 120ms of ease. */
+  display: none;
 }
 
 .info-btn:hover .info-tip,
 .info-btn:focus-visible .info-tip {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }
 
 /* Dismissed with Esc. Wins over :hover above, which is the whole point. */
 :root.tips-off .info-tip {
-  opacity: 0;
-  visibility: hidden;
+  display: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .info-tip { transition: none; }
+/* Narrow: extend from the icon's right edge instead, so a tip on a trigger
+   sitting near the edge grows back into the page rather than off it. */
+@media (max-width: 640px) {
+  .info-tip {
+    left: auto;
+    right: -4px;
+  }
 }
 
 .info-btn:hover { color: var(--ink); }
