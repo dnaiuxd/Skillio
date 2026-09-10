@@ -239,15 +239,23 @@ _version_cache: dict[str, Optional[str]] = {}
 
 
 def _skillspector_version(binary: str, refresh: bool = False) -> Optional[str]:
-    if refresh or binary not in _version_cache:
-        try:
-            proc = subprocess.run(
-                [binary, "--version"], capture_output=True, text=True, timeout=15
-            )
-            _version_cache[binary] = proc.stdout.strip() or None
-        except Exception:
-            _version_cache[binary] = None
-    return _version_cache[binary]
+    if not refresh and binary in _version_cache:
+        return _version_cache[binary]
+    try:
+        proc = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, timeout=15
+        )
+        version = proc.stdout.strip() or None
+    except Exception:
+        version = None
+    # Only a SUCCESSFUL read is a stable fact about this binary. Caching the
+    # failure too meant one slow or interrupted start poisoned the version for
+    # the life of the process: the health line fell back to "installed" with no
+    # version, and the update check reported "your installed version could not
+    # be read" forever. Observed live right after a service restart.
+    if version is not None:
+        _version_cache[binary] = version
+    return version
 
 
 # --- is there a newer SkillSpector? ------------------------------------------

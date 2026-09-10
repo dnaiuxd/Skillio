@@ -560,5 +560,77 @@ class ReleaseScript(unittest.TestCase):
         self.assertNotIn("MAJOR.MINOR.PATCH version", proc.stderr)
 
 
+class VersionCache(unittest.TestCase):
+    """`skillspector --version` spins up the whole CLI, so the answer is
+    cached. A FAILURE is not an answer, though — caching that made one bad
+    start report "your installed version could not be read" until restart."""
+
+    def setUp(self):
+        app._version_cache.clear()
+
+    def tearDown(self):
+        app._version_cache.clear()
+
+    def test_a_failed_read_is_retried_not_remembered(self):
+        calls = []
+
+        class Ok:
+            returncode = 0
+            stdout = "SkillSpector v2.11.2"
+            stderr = ""
+
+        def flaky(cmd, **kw):
+            calls.append(cmd)
+            if len(calls) == 1:
+                raise OSError("transient")
+            return Ok()
+
+        with mock.patch.object(app.subprocess, "run", flaky):
+            self.assertIsNone(app._skillspector_version("/bin/skillspector"))
+            self.assertEqual(
+                app._skillspector_version("/bin/skillspector"),
+                "SkillSpector v2.11.2",
+            )
+        self.assertEqual(len(calls), 2, "the failure was cached instead of retried")
+
+    def test_a_successful_read_is_only_taken_once(self):
+        calls = []
+
+        class Ok:
+            returncode = 0
+            stdout = "SkillSpector v2.11.2"
+            stderr = ""
+
+        def counted(cmd, **kw):
+            calls.append(cmd)
+            return Ok()
+
+        with mock.patch.object(app.subprocess, "run", counted):
+            for _ in range(3):
+                app._skillspector_version("/bin/skillspector")
+        self.assertEqual(len(calls), 1, "the cache stopped working")
+
+    def test_refresh_goes_back_to_the_binary(self):
+        """The update check passes refresh=True, because an upgrade you just
+        ran is exactly the case where the cached value is stale."""
+        seen = ["SkillSpector v2.11.0", "SkillSpector v2.11.2"]
+
+        def changing(cmd, **kw):
+            class P:
+                returncode = 0
+                stdout = seen.pop(0)
+                stderr = ""
+            return P()
+
+        with mock.patch.object(app.subprocess, "run", changing):
+            self.assertEqual(
+                app._skillspector_version("/bin/skillspector"), "SkillSpector v2.11.0"
+            )
+            self.assertEqual(
+                app._skillspector_version("/bin/skillspector", refresh=True),
+                "SkillSpector v2.11.2",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
