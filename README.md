@@ -85,12 +85,15 @@ machine and downloads one if there isn't a suitable one. Without uv it
 falls back to the system `python3`; the app still runs, you just don't get
 the upgrade.
 
-uv's environments are also relocatable — its console scripts use a
-`#!/bin/sh` shim rather than an absolute shebang — so moving or renaming
-the folder no longer breaks them. The launcher checks anyway: it runs
-`.venv/bin/uvicorn` rather than trusting the file to be there, because a
-stdlib venv survives a move with a working `python3` and a `uvicorn` that
-dies with "bad interpreter". If it finds one in that state it rebuilds it.
+**Moving the folder still breaks the environment**, whichever way it was
+built. Both uv and `python3 -m venv` write an absolute shebang into every
+console script, so after a rename `.venv/bin/uvicorn` dies with "bad
+interpreter". (uv writes a `#!/bin/sh` shim instead only when the path is
+too long for a shebang — around 127 characters — so that is a fallback,
+not relocatability.) What saves you is the check: the launcher runs
+`.venv/bin/uvicorn` rather than trusting the file to exist, because in
+this state `python3` still reports a version quite happily and only the
+thing being launched is broken. When it finds that, it rebuilds.
 
 ### Run it — always (background service, macOS)
 
