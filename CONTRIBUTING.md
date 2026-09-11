@@ -67,6 +67,19 @@ The two share nothing. The scan log lives inside each checkout
 its CORS allowlist from `SKILLIO_PORT` — hardcoding 8787 there used to mean the
 second instance's own browser origin was refused by its own backend.
 
+The launchd agent runs `macos/Skillio`, a two-line wrapper that execs uvicorn,
+rather than uvicorn itself. Its only job is its filename: macOS builds System
+Settings > Login Items from the executable an agent runs, so pointing it at
+`.venv/bin/uvicorn` listed the agent as *uvicorn - Item from unidentified
+developer*, once per checkout, with nothing to say what either belonged to.
+Rename that file and you rename the login item. ("Unidentified developer"
+stays either way; that needs an Apple Developer ID signature.)
+
+There are two of them for that reason: the default port runs `macos/Skillio`,
+anything else runs `macos/Skillio-Dev`, which does nothing but exec the first
+one under a different name. So the everyday install and a development checkout
+are told apart in System Settings instead of being two identical rows.
+
 The background service takes the same variable, and at a non-default port it
 names itself and its log after it — `com.skillio.gui.8788` and
 `~/Library/Logs/skillio-8788.log` — so installing one cannot boot out the

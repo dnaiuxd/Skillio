@@ -1230,6 +1230,12 @@ class InstallerBuildsItsOwnVenv(unittest.TestCase):
         (tmp / "macos").mkdir()
         (tmp / "backend").mkdir()
         shutil.copy(self.SCRIPT, tmp / "macos" / "install-service.sh")
+        # The installer refuses without it: launchd is pointed at this rather
+        # than at uvicorn, so that Login Items says "Skillio".
+        for name in ("Skillio", "Skillio-Dev"):
+            dst = tmp / "macos" / name
+            shutil.copy(self.SCRIPT.parent / name, dst)
+            dst.chmod(0o755)
         shutil.copy(self.REQUIREMENTS, tmp / "backend" / "requirements.txt")
         return tmp / "macos" / "install-service.sh"
 
@@ -1352,6 +1358,72 @@ class RunAtLogin(unittest.TestCase):
         self.assertLess(script.index("lsof"), script.index("bootstrap"))
         # It has to outlive the server that spawned it.
         self.assertTrue(captured["kw"]["start_new_session"])
+
+
+class LoginItemName(unittest.TestCase):
+    """macOS builds System Settings > Login Items from the executable a
+    launchd agent runs. Pointing the agent straight at uvicorn listed it as
+    "uvicorn - Item from unidentified developer", once per checkout, with
+    nothing to say which was which or what either belonged to."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+    LAUNCHER = ROOT / "macos" / "Skillio"
+    INSTALLER = ROOT / "macos" / "install-service.sh"
+
+    def test_the_launcher_is_named_for_the_login_items_list(self):
+        """Its filename is the whole point; renaming it renames the entry."""
+        self.assertEqual(self.LAUNCHER.name, "Skillio")
+        self.assertTrue(self.LAUNCHER.is_file())
+
+    def test_it_is_executable(self):
+        """launchd accepts a job whose program cannot be executed, and then
+        the port simply stays silent."""
+        self.assertTrue(os.access(self.LAUNCHER, os.X_OK))
+
+    def test_the_default_port_and_a_second_checkout_get_different_names(self):
+        """Two checkouts installed as services would otherwise be two
+        identical rows in System Settings, with nothing to tell them apart."""
+        text = self.INSTALLER.read_text()
+        block = text.split("LAUNCHER=", 1)[0].rsplit('if [ "$PORT" = "8787" ]', 1)
+        self.assertEqual(len(block), 2, "launcher is not chosen by port")
+        chooser = text.split('if [ "$PORT" = "8787" ]', 2)[2].split("fi", 1)[0]
+        self.assertIn("macos/Skillio\"", chooser)
+        self.assertIn("macos/Skillio-Dev", chooser)
+
+    def test_the_dev_launcher_exists_and_only_lends_its_name(self):
+        """Its filename is its whole contribution; the logic stays in one
+        place so the two cannot drift."""
+        dev = self.ROOT / "macos" / "Skillio-Dev"
+        self.assertTrue(dev.is_file())
+        self.assertTrue(os.access(dev, os.X_OK))
+        self.assertRegex(dev.read_text(), r'\nexec "\$\(cd .*\)/Skillio"')
+
+    def test_the_agent_runs_the_launcher_and_not_uvicorn(self):
+        text = self.INSTALLER.read_text()
+        args = text.split("<key>ProgramArguments</key>", 1)[1].split("</array>", 1)[0]
+        self.assertIn("$LAUNCHER", args)
+        self.assertNotIn("$UVICORN", args)
+
+    def test_the_installer_refuses_without_it(self):
+        """A missing launcher must fail loudly here, not silently at boot."""
+        self.assertIn('[ -x "$LAUNCHER" ] || fail', self.INSTALLER.read_text())
+
+    def test_the_launcher_replaces_itself_with_the_server(self):
+        """Without exec, launchd's KeepAlive would watch the wrapper rather
+        than the server it is meant to restart."""
+        text = self.LAUNCHER.read_text()
+        self.assertRegex(text, r"\nexec .*uvicorn")
+
+    def test_it_serves_the_port_it_was_given(self):
+        """The agent passes SKILLIO_PORT through the environment, since the
+        port is no longer on the command line."""
+        text = self.LAUNCHER.read_text()
+        self.assertIn('"${SKILLIO_PORT:-8787}"', text)
+
+    def test_it_finds_the_repository_from_its_own_location(self):
+        """The installer writes no paths into it, so it has to orient itself
+        the way install-service.sh does."""
+        self.assertIn('dirname "${BASH_SOURCE[0]}"', self.LAUNCHER.read_text())
 
 
 if __name__ == "__main__":

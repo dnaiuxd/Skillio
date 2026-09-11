@@ -89,6 +89,17 @@ else
   VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
 fi
 UVICORN="$REPO/backend/.venv/bin/uvicorn"
+# What launchd is actually pointed at. Named "Skillio" because macOS builds
+# the Login Items list from the executable's filename — running uvicorn
+# directly listed the agent as "uvicorn", twice, once per checkout.
+# The everyday install is "Skillio"; a second checkout on another port is
+# "Skillio-Dev", so the two are told apart in System Settings rather than
+# appearing as two identical rows. Same rule as the label and the log above.
+if [ "$PORT" = "8787" ]; then
+  LAUNCHER="$REPO/macos/Skillio"
+else
+  LAUNCHER="$REPO/macos/Skillio-Dev"
+fi
 
 # Which installer to use depends on what the venv CONTAINS — `uv venv` ships
 # no pip — not on whether uv happens to be on PATH right now.
@@ -136,6 +147,9 @@ build_venv() {
   venv_is_usable || fail "Built a Python environment but uvicorn will not run.
        Try by hand: $VENV_SETUP"
 }
+
+[ -x "$LAUNCHER" ] || fail "Missing or non-executable: $LAUNCHER
+       This is part of the repository; restore it with: git checkout macos/Skillio"
 
 if ! venv_is_usable; then
   # --dry-run promises to change nothing, and building a venv is a change.
@@ -261,12 +275,7 @@ cat > "$PLIST" <<PLIST_EOF
 
     <key>ProgramArguments</key>
     <array>
-        <string>$UVICORN</string>
-        <string>app:app</string>
-        <string>--host</string>
-        <string>127.0.0.1</string>
-        <string>--port</string>
-        <string>$PORT</string>
+        <string>$LAUNCHER</string>
     </array>
 
     <key>WorkingDirectory</key>

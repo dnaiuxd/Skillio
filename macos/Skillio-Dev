@@ -1,0 +1,11 @@
+#!/bin/bash
+#
+# Same wrapper, different name — and the name is the whole reason it exists.
+#
+# macOS builds the Login Items list from the executable a launchd agent runs,
+# so a second checkout installed as its own service would otherwise appear as
+# a second entry identical to the first. The installer points anything not on
+# the default port at this file instead, and System Settings says Skillio-Dev.
+#
+# The logic lives in Skillio; this only lends it a name.
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/Skillio" "$@"

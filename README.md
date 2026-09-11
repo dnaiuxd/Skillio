@@ -104,7 +104,8 @@ SKILLSPECTOR_PROVIDER=claude_cli ./macos/install-service.sh
 ```
 
 It builds the Python environment if there isn't one, writes the launchd agent
-from wherever the repo actually lives, and starts it. `--dry-run` shows the
+from wherever the repo actually lives, and starts it. The agent shows up in
+System Settings > Login Items as **Skillio**. `--dry-run` shows the
 plist without installing anything; `--uninstall` removes it. Logs go to
 `~/Library/Logs/skillio.log`.
 

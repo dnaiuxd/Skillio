@@ -1,0 +1,22 @@
+#!/bin/bash
+#
+# This file is named "Skillio" deliberately, and nothing else about it matters.
+#
+# macOS builds the Login Items list from the executable a launchd agent runs,
+# so pointing the agent straight at `.venv/bin/uvicorn` put two entries called
+# "uvicorn — Item from unidentified developer" in System Settings, with no way
+# to tell which was which or what either belonged to. The agent runs this
+# instead, and the list says Skillio.
+#
+# ("Unidentified developer" stays. That needs an Apple Developer ID signature,
+# which costs money and would tell the user nothing they don't know: this is a
+# script on their own disk that they installed themselves.)
+set -e
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO/backend"
+
+# exec, so this shell is replaced rather than left waiting: launchd tracks the
+# pid it started, and KeepAlive would otherwise be watching a wrapper instead
+# of the server it cares about.
+exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "${SKILLIO_PORT:-8787}"
