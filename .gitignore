@@ -31,3 +31,6 @@ venv/
 
 # Node (frontend tooling, if added later)
 node_modules/
+
+# "No thanks" to the background service, recorded so Skillio.command asks once
+.no-background-service

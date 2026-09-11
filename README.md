@@ -26,7 +26,8 @@ git clone https://github.com/dnaiuxd/Skillio.git                 # this app
 cd Skillio && ./Skillio.command                                  # first run builds the venv
 ```
 
-That opens **http://localhost:8787**. Close the Terminal window to stop it.
+That opens **http://localhost:8787**, and asks whether macOS should keep
+Skillio running for you. Say yes and you never need a Terminal window again.
 
 ## Install
 
@@ -56,41 +57,62 @@ export SKILLSPECTOR_PROVIDER=claude_cli   # reuses your Claude Code login, no AP
 
 ### Running it
 
-**One-click** — double-click **`Skillio.command`**. The first run builds the
-Python environment; after that it starts the server and opens your browser.
-This is the one to start with.
+Double-click **`Skillio.command`**. The first run sets up Python, then asks
+one question:
 
-<details>
-<summary><b>As a background service</b> — always up, starts at login, survives reboots</summary>
-
-```bash
-cd Skillio/backend
-uv venv --python '>=3.11' .venv
-uv pip install --python .venv/bin/python -r requirements.txt
-cd .. && SKILLSPECTOR_PROVIDER=claude_cli ./macos/install-service.sh
+```
+Hand it to macOS? [Y/n]
 ```
 
-The script writes the launchd agent from wherever the repo actually lives, so
-there are no paths to hand-edit. `--dry-run` shows the plist without
-installing anything. Logs go to `~/Library/Logs/skillio.log`.
+**Yes** — macOS keeps Skillio running from then on: it starts when you log
+in, restarts itself if it crashes, and needs no Terminal window. This is the
+one to pick. You never open `Skillio.command` again.
 
-**Set `SKILLSPECTOR_PROVIDER` on that command.** A launchd agent cannot see
-what you exported in a terminal, and without it in the plist your scans
-silently drop to static-only. Later re-runs carry it forward from the previous
-install, so a reinstall can't quietly disable the semantic analyzers.
+**No** — Skillio runs in that Terminal window and stops when you close it.
+You're only asked once, but you're not stuck with it: **Run at login** at the
+bottom of the left rail opens the same choice inside the app, and taking it
+hands the server over there and then — the page reconnects on its own a
+couple of seconds later, and you can close the Terminal window.
 
-</details>
+If it can find your Claude Code login, it also offers to switch on the
+semantic analyzers — see [the LLM pass](#the-scanner-one-time) above for what
+those add.
 
-<details>
-<summary><b>In the Dock</b> — as a standalone window</summary>
+### Putting it in the Dock
 
-With the server running, open `http://localhost:8787` and:
+Skillio opens in an ordinary browser tab until you do this once. Both
+browsers build a real app from the page, and neither exposes that as anything
+a script can run for you — so it's one menu item, one time:
 
 - **Chrome** — ⋮ → *Cast, save, and share* → **Install page as app…**
 - **Safari 17+** — File → **Add to Dock**
 
-The Dock icon only opens the window; it still needs the server up, so pair it
-with the background service.
+You get a Skillio icon in the Dock and a real app window: no tabs, no address
+bar, no browser menus. From then on `Skillio.command` opens *that* rather
+than a tab — it looks for the installed app first.
+
+The icon is only a window, though: it opens Skillio but can't start it. That
+is why the question above is worth a yes — with the background service
+running, the icon always works, including straight after a restart. Without
+it, clicking the icon on a freshly booted Mac gives you an error page.
+
+<details>
+<summary><b>Installing the background service by hand</b></summary>
+
+```bash
+SKILLSPECTOR_PROVIDER=claude_cli ./macos/install-service.sh
+```
+
+It builds the Python environment if there isn't one, writes the launchd agent
+from wherever the repo actually lives, and starts it. `--dry-run` shows the
+plist without installing anything; `--uninstall` removes it. Logs go to
+`~/Library/Logs/skillio.log`.
+
+**Set `SKILLSPECTOR_PROVIDER` on that command** if you're not answering its
+prompt. A launchd agent cannot see what you exported in a terminal, and
+without it in the plist your scans silently drop to static-only. Later
+re-runs carry it forward from the previous install, so a reinstall can't
+quietly disable the semantic analyzers.
 
 </details>
 

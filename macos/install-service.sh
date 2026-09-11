@@ -4,6 +4,7 @@
 #
 #   ./macos/install-service.sh              install or upgrade
 #   ./macos/install-service.sh --dry-run    show the plist, change nothing
+#   ./macos/install-service.sh --no-start   write the agent, don't start it
 #   ./macos/install-service.sh --uninstall  stop and remove
 #
 # Everything machine-specific is discovered at run time rather than baked
@@ -58,13 +59,24 @@ if [ "${1:-}" = "--uninstall" ]; then
 fi
 
 DRY_RUN=0
-if [ "${1:-}" = "--dry-run" ]; then
-  DRY_RUN=1
-  PLIST="$(mktemp -t skillio-plist)"
-  printf '\nDry run — generating the plist only, nothing will be installed\n\n'
-else
-  printf '\nInstalling Skillio service\n\n'
-fi
+# Writes and validates the agent but does not start it. The app itself uses
+# this when it is holding the port: launchd would fail to bind, and KeepAlive
+# would retry the crash forever. Something else starts it once the port frees.
+NO_START=0
+case "${1:-}" in
+  --dry-run)
+    DRY_RUN=1
+    PLIST="$(mktemp -t skillio-plist)"
+    printf '\nDry run — generating the plist only, nothing will be installed\n\n'
+    ;;
+  --no-start)
+    NO_START=1
+    printf '\nInstalling Skillio service (not starting it)\n\n'
+    ;;
+  *)
+    printf '\nInstalling Skillio service\n\n'
+    ;;
+esac
 
 # --- preflight -------------------------------------------------------------
 # Kept in step with Skillio.command, which owns the real logic — it picks a
@@ -77,18 +89,62 @@ else
   VENV_SETUP="cd '$REPO/backend' && rm -rf .venv && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
 fi
 UVICORN="$REPO/backend/.venv/bin/uvicorn"
-[ -x "$UVICORN" ] || fail "No venv found at $REPO/backend/.venv
-       Create it first:
-         $VENV_SETUP"
+
+# Which installer to use depends on what the venv CONTAINS — `uv venv` ships
+# no pip — not on whether uv happens to be on PATH right now.
+install_requirements() {
+  if [ -x "$REPO/backend/.venv/bin/pip" ]; then
+    (cd "$REPO/backend" && .venv/bin/pip install --quiet -r requirements.txt)
+  elif command -v uv >/dev/null 2>&1; then
+    (cd "$REPO/backend" && uv pip install --quiet --python .venv/bin/python -r requirements.txt)
+  else
+    fail "This venv was built by uv, which is no longer installed.
+       Rebuild it: $VENV_SETUP"
+  fi
+}
 
 # Executable is not the same as runnable. A venv bakes its absolute path
 # into every script's shebang, so moving or renaming the repo leaves
 # uvicorn present, executable, and pointing at a python that no longer
 # exists. launchd would accept the job and the port would stay silent.
-"$UVICORN" --version >/dev/null 2>&1 || fail "The venv at $REPO/backend/.venv is broken.
-       Its scripts point at a path that no longer exists, which is what
-       happens when the repo is moved or renamed. Rebuild it:
-         $VENV_SETUP"
+venv_is_usable() {
+  [ -x "$UVICORN" ] && "$UVICORN" --version >/dev/null 2>&1
+}
+
+# Build it rather than explain how to. This used to fail with the commands
+# printed out, which put a wall between the one-click launcher and the
+# background service: everyone who started by double-clicking Skillio.command
+# had to open a terminal to get any further. Running the commands is strictly
+# less work than reading them.
+build_venv() {
+  if [ -e "$REPO/backend/.venv" ]; then
+    say "The Python environment is broken — rebuilding it…"
+  else
+    say "Setting up the Python environment (this takes a minute)…"
+  fi
+  rm -rf "$REPO/backend/.venv"
+  if command -v uv >/dev/null 2>&1; then
+    (cd "$REPO/backend" && uv venv --quiet --python '>=3.11' .venv) \
+      || fail "Could not create the Python environment. Try by hand: $VENV_SETUP"
+  else
+    (cd "$REPO/backend" && python3 -m venv .venv) \
+      || fail "Could not create the Python environment. Try by hand: $VENV_SETUP"
+  fi
+  # A venv with no packages in it has no uvicorn, so the usability check
+  # below would fail on a perfectly good build. Install first, then verify.
+  install_requirements || fail "Could not install dependencies. Try by hand: $VENV_SETUP"
+  venv_is_usable || fail "Built a Python environment but uvicorn will not run.
+       Try by hand: $VENV_SETUP"
+}
+
+if ! venv_is_usable; then
+  # --dry-run promises to change nothing, and building a venv is a change.
+  if [ "$DRY_RUN" -eq 1 ]; then
+    say "No usable venv at $REPO/backend/.venv — a real run would build one."
+  else
+    build_venv
+  fi
+fi
 
 # --- bring dependencies up to date -----------------------------------------
 # The plist runs uvicorn and nothing else, so a service restart picks up new
@@ -99,16 +155,7 @@ UVICORN="$REPO/backend/.venv/bin/uvicorn"
 # venv contains — `uv venv` ships no pip — not on whether uv is on PATH.
 if [ "$DRY_RUN" -eq 0 ]; then
   say "Syncing dependencies…"
-  if [ -x "$REPO/backend/.venv/bin/pip" ]; then
-    (cd "$REPO/backend" && .venv/bin/pip install --quiet -r requirements.txt) \
-      || fail "Could not install dependencies. Try: $VENV_SETUP"
-  elif command -v uv >/dev/null 2>&1; then
-    (cd "$REPO/backend" && uv pip install --quiet --python .venv/bin/python -r requirements.txt) \
-      || fail "Could not install dependencies. Try: $VENV_SETUP"
-  else
-    fail "This venv was built by uv, which is no longer installed.
-       Rebuild it: $VENV_SETUP"
-  fi
+  install_requirements || fail "Could not install dependencies. Try: $VENV_SETUP"
 fi
 
 SKILLSPECTOR="$(command -v skillspector || true)"
@@ -132,6 +179,7 @@ read_provider_from() {
   [ -f "$1" ] || return 1
   /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:SKILLSPECTOR_PROVIDER" "$1" 2>/dev/null
 }
+PROVIDER_ASKED=0
 PROVIDER="${SKILLSPECTOR_PROVIDER:-}"
 PROVIDER_SOURCE="the SKILLSPECTOR_PROVIDER in your shell"
 if [ -z "$PROVIDER" ]; then
@@ -145,12 +193,42 @@ if [ -z "$PROVIDER" ]; then
   done
 fi
 
+# Nothing known and someone is watching: ask, rather than quietly installing a
+# static-only service. This is the only moment the omission is visible — from
+# the app a static-only scan looks like a successful scan, because it is one;
+# it just never judged whether the skill does what it says. Only offered when
+# `claude` is actually on PATH, since configuring a provider that isn't there
+# would trade a silent gap for a loud failure on every scan.
+if [ -z "$PROVIDER" ] && [ "$DRY_RUN" -eq 0 ] && [ "$NO_START" -eq 0 ] \
+   && [ -t 0 ] && command -v claude >/dev/null 2>&1; then
+  printf '\n  Skillio can run three extra analyzers that judge whether a skill\n'
+  printf '  really does what it claims — the part no static check can see.\n'
+  printf '  They can use your existing Claude Code login: no API key needed.\n\n'
+  printf '  Turn them on? [Y/n] '
+  PROVIDER_ASKED=1
+  if read -r reply; then
+    case "$reply" in
+      [Nn]*) say "Left off — scans will be static-only." ;;
+      *)     PROVIDER="claude_cli"; PROVIDER_SOURCE="your answer just now" ;;
+    esac
+  else
+    # Piped, closed, or walked away from. Silence is not consent: these scans
+    # spend the user's Claude plan, so default to off and say so.
+    printf '\n'
+    say "No answer — leaving the semantic analyzers off."
+  fi
+fi
+
 PROVIDER_XML=""
 if [ -n "$PROVIDER" ]; then
   say "LLM provider: $PROVIDER (from $PROVIDER_SOURCE)"
   PROVIDER_XML="
         <key>SKILLSPECTOR_PROVIDER</key>
         <string>$PROVIDER</string>"
+elif [ "$PROVIDER_ASKED" -eq 1 ]; then
+  # Just asked and told no. Repeating the pitch here said the same thing
+  # three ways in a row; one line is enough to record the choice.
+  say "  Change your mind: SKILLSPECTOR_PROVIDER=claude_cli ./macos/install-service.sh"
 else
   say "No LLM provider set — scans will be static-only."
   say "  To enable the semantic analyzers, re-run as:"
@@ -233,6 +311,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
+if [ "$NO_START" -eq 1 ]; then
+  say "Wrote $PLIST"
+  say "Not started — launchd will run it from your next login, or sooner if"
+  say "something bootstraps it once port $PORT is free."
+  printf '\n'
+  exit 0
+fi
+
 # --- (re)load --------------------------------------------------------------
 # bootout then bootstrap, never kickstart: kickstart restarts the process
 # without re-reading the plist, so a changed provider would not take effect.
@@ -257,7 +343,7 @@ done
 printf '\n  Waiting for the server'
 for _ in $(seq 1 20); do
   if curl -fs "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then
-    printf '\r'
+    printf '\r%*s\r' 40 ''
     say "Running at http://localhost:$PORT"
     say "Logs: $LOG"
     printf '\n'

@@ -57,6 +57,12 @@ const els = {
   aboutBtn: document.getElementById("about-btn"),
   aboutDialog: document.getElementById("about-dialog"),
   aboutClose: document.getElementById("about-close"),
+  serviceOffer: document.getElementById("service-offer"),
+  serviceOpen: document.getElementById("service-open"),
+  serviceDialog: document.getElementById("service-dialog"),
+  serviceConfirm: document.getElementById("service-confirm"),
+  serviceCancel: document.getElementById("service-cancel"),
+  serviceStatus: document.getElementById("service-status"),
   updateResult: document.getElementById("update-result"),
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
@@ -1762,8 +1768,112 @@ window.addEventListener("drop", (e) => {
   if (!els.dropZone.contains(e.target)) e.preventDefault();
 });
 
+// --- run at login ---------------------------------------------------------
+// The launcher asks this question once, in a terminal. Someone who said no
+// there had no way back that did not involve reopening one, so the same
+// choice lives here.
+
+// Mirrors the backend's own guard: the offer is for a server nobody is
+// managing. A launchd-run Skillio, or any non-macOS host, shows nothing.
+async function refreshServiceOffer() {
+  try {
+    const res = await fetch(`${API}/service`);
+    if (!res.ok) return;
+    const state = await res.json();
+    els.serviceOffer.hidden = !(state.supported && !state.managed);
+  } catch (e) {
+    // Offering something we cannot describe is worse than not offering it.
+  }
+}
+
+function setServiceStatus(text, kind) {
+  els.serviceStatus.hidden = false;
+  els.serviceStatus.textContent = text;
+  els.serviceStatus.className = `service-status service-status--${kind}`;
+}
+
+// The handover kills this server and launchd starts another on the same
+// port, so the request that began it cannot report the end of it.
+//
+// Asks /api/service rather than /api/health, because "something answers on
+// this port" is true of the server on its way OUT: the first poll landed
+// before it had finished exiting and reported success half a second in,
+// while the launchd process did not yet exist. Only `managed` distinguishes
+// them — it is true just for the process launchd itself started.
+async function waitForHandover(attempts = 60) {
+  for (let i = 0; i < attempts; i += 1) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const res = await fetch(`${API}/service`, { cache: "no-store" });
+      if (res.ok && (await res.json()).managed) return true;
+    } catch (e) {
+      // Expected while the port is between owners.
+    }
+  }
+  return false;
+}
+
+async function installService() {
+  els.serviceConfirm.disabled = true;
+  els.serviceCancel.disabled = true;
+  setServiceStatus("Setting up…", "working");
+  let data;
+  try {
+    const res = await fetch(`${API}/service/install`, {
+      method: "POST",
+      // Not decoration: a JSON content type forces a CORS preflight, so this
+      // cannot be posted by a page on another site.
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+  } catch (e) {
+    setServiceStatus(requestMessage(e, "Setting up"), "error");
+    els.serviceConfirm.disabled = false;
+    els.serviceCancel.disabled = false;
+    return;
+  }
+
+  if (data.status === "already") {
+    setServiceStatus("Already set up — macOS is looking after Skillio.", "done");
+    els.serviceOffer.hidden = true;
+    els.serviceCancel.disabled = false;
+    return;
+  }
+
+  setServiceStatus("Handing over to macOS…", "working");
+  const back = await waitForHandover();
+  els.serviceCancel.disabled = false;
+  if (!back) {
+    setServiceStatus(
+      "Skillio did not come back on its own. Run ./macos/install-service.sh in a terminal.",
+      "error"
+    );
+    return;
+  }
+  setServiceStatus(
+    "Done. Skillio now starts when you log in — you can close the Terminal window.",
+    "done"
+  );
+  els.serviceOffer.hidden = true;
+}
+
+els.serviceOpen.addEventListener("click", () => {
+  els.serviceStatus.hidden = true;
+  els.serviceConfirm.disabled = false;
+  els.serviceCancel.disabled = false;
+  els.serviceDialog.showModal();
+});
+els.serviceCancel.addEventListener("click", () => els.serviceDialog.close());
+els.serviceDialog.addEventListener("click", (e) => {
+  if (e.target === els.serviceDialog) els.serviceDialog.close();
+});
+els.serviceConfirm.addEventListener("click", installService);
+
 checkHealth();
 loadSkills();
+refreshServiceOffer();
 // Its own request, deliberately: the result is cached server-side for hours,
 // so this costs nothing on a reload, and a slow or failed GitHub call must
 // never hold up the health line or the log.

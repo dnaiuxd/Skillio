@@ -16,8 +16,11 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -36,7 +39,7 @@ except ImportError:  # pragma: no cover
     # with the old, memory-hungry registry path — see _run_scan.
     ijson = None
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -556,6 +559,151 @@ def _skillio_update(now: Optional[float] = None, refresh: bool = False) -> dict:
 @app.get("/api/updates/skillio")
 def check_skillio_updates(refresh: bool = False) -> dict:
     return _skillio_update(refresh=refresh)
+
+
+# --- run at login ----------------------------------------------------------
+# The launcher offers to hand Skillio to launchd, but someone who said no
+# there has no way back except a terminal. These two endpoints put the same
+# choice in the app.
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SERVICE_INSTALLER = REPO_ROOT / "macos" / "install-service.sh"
+# Mirrors the label the installer derives. Duplicated deliberately rather
+# than shelled out for: a status call happens on every page load.
+# SKILLIO_PORT is a string — see _port() — so this compares against one.
+# An int here silently produced "com.skillio.gui.8787", a label the installer
+# never writes, which would have made every install look like the first.
+LAUNCHD_LABEL = (
+    "com.skillio.gui" if SKILLIO_PORT == "8787" else f"com.skillio.gui.{SKILLIO_PORT}"
+)
+LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
+
+
+def _launchd_pid(label: str = LAUNCHD_LABEL) -> Optional[int]:
+    """The PID launchd has for this label, or None when it isn't loaded."""
+    try:
+        proc = subprocess.run(
+            ["launchctl", "list", label],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    match = re.search(r'"PID"\s*=\s*(\d+)', proc.stdout)
+    return int(match.group(1)) if match else None
+
+
+def _service_state() -> dict:
+    """Whether macOS is already looking after this server.
+
+    `managed` means this very process is the one launchd started — not just
+    that an agent exists. A plist for a server someone else is running by
+    hand is exactly the case the offer is for."""
+    supported = sys.platform == "darwin" and SERVICE_INSTALLER.is_file()
+    pid = _launchd_pid() if supported else None
+    return {
+        "supported": supported,
+        "installed": supported and LAUNCHD_PLIST.is_file(),
+        "managed": pid is not None and pid == os.getpid(),
+        "label": LAUNCHD_LABEL,
+        "port": SKILLIO_PORT,
+    }
+
+
+@app.get("/api/service")
+def service_status() -> dict:
+    return _service_state()
+
+
+def _same_origin(request: Request) -> bool:
+    """CORS does not police this on its own.
+
+    A cross-site POST with a simple content type is sent without a preflight,
+    so the browser would deliver it and only hide the response — by which
+    time a launchd agent would already exist. This endpoint installs a thing
+    that survives reboots, so it checks the Origin itself rather than
+    trusting the middleware to have refused."""
+    origin = request.headers.get("origin")
+    if origin is None:
+        # Not a browser — curl, or a same-origin navigation. Reachable only
+        # from localhost either way, since that is all uvicorn binds.
+        return True
+    return origin in {
+        f"http://localhost:{SKILLIO_PORT}",
+        f"http://127.0.0.1:{SKILLIO_PORT}",
+    }
+
+
+def _bootstrap_when_free(label: str, plist: Path, port: int) -> None:
+    """Start the agent once this process has let go of the port.
+
+    Deliberately detached: it has to outlive the server that spawned it.
+    Without the wait, launchd binds against a port we still hold, fails with
+    EADDRINUSE, and KeepAlive turns that into a restart loop — one that runs
+    the startup sweep on every lap and marks in-flight scans failed."""
+    quoted = shlex.quote(str(plist))
+    script = f"""
+for _ in $(seq 1 60); do
+  if ! /usr/sbin/lsof -nP -iTCP:{int(port)} -sTCP:LISTEN -t >/dev/null 2>&1; then
+    exec /bin/launchctl bootstrap gui/$(/usr/bin/id -u) {quoted}
+  fi
+  sleep 0.5
+done
+"""
+    subprocess.Popen(
+        ["/bin/sh", "-c", script],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+@app.post("/api/service/install")
+def install_service(request: Request) -> dict:
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Cross-origin request refused.")
+
+    state = _service_state()
+    if not state["supported"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Running at login is a macOS feature and needs the installer script.",
+        )
+    if state["managed"]:
+        return {"status": "already", **state}
+
+    # The handover restarts the server. A scan in flight would be killed
+    # mid-run and closed out as failed by the next startup sweep.
+    if not _claim_scan_slot():
+        raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
+    _release_scan_slot()
+
+    try:
+        proc = subprocess.run(
+            ["/bin/bash", str(SERVICE_INSTALLER), "--no-start"],
+            capture_output=True, text=True, timeout=300,
+            cwd=str(REPO_ROOT),
+            env={**os.environ, "SKILLIO_PORT": str(SKILLIO_PORT)},
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=500,
+            detail="Setting up took too long. Run ./macos/install-service.sh in a terminal.",
+        )
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=_stderr_cause(proc.stderr or proc.stdout)
+            or "The installer failed. Run ./macos/install-service.sh in a terminal.",
+        )
+
+    _bootstrap_when_free(LAUNCHD_LABEL, LAUNCHD_PLIST, SKILLIO_PORT)
+    # Let the response reach the browser before the port goes away; the page
+    # is polling /api/health and will see the replacement come up.
+    threading.Timer(1.0, lambda: os.kill(os.getpid(), signal.SIGTERM)).start()
+    return {"status": "handing-over", **_service_state()}
 
 
 @app.get("/api/health")

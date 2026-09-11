@@ -1191,6 +1191,58 @@ test("a failed self-update check says nothing at all", () => {
   assert.match(loader.slice(0, loader.indexOf("\n}\n")), /!d\.update_available/);
 });
 
+
+test("the handover waits for launchd, not for anything answering the port", () => {
+  // The server on its way OUT still answers /api/health. Polling that
+  // reported success half a second in, while the launchd process did not
+  // yet exist — only `managed` tells the two apart.
+  const fn = appSource.slice(appSource.indexOf("async function waitForHandover"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /\/service/);
+  assert.ok(!/\/health/.test(body), "waits on /health, which the outgoing server answers");
+  assert.match(body, /managed/);
+});
+
+test("the install POST cannot be sent by a page on another site", () => {
+  // A JSON content type is not decoration here: it forces a CORS preflight,
+  // which a simple form-encoded POST would skip.
+  const fn = appSource.slice(appSource.indexOf("async function installService"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /"Content-Type":\s*"application\/json"/);
+});
+
+test("the run-at-login offer is hidden until the server says to show it", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const offer = html.slice(html.indexOf('id="service-offer"'));
+  assert.match(offer.slice(0, offer.indexOf(">") + 1), /hidden/);
+  // And it is only shown for a server nobody is already managing.
+  const fn = appSource.slice(appSource.indexOf("async function refreshServiceOffer"));
+  assert.match(fn.slice(0, fn.indexOf("\n}\n")), /supported && !state\.managed/);
+});
+
+test("each handover state is told apart by more than its colour", () => {
+  // .info-dialog p is (0,1,1) and sets colour; an unscoped modifier at
+  // (0,1,0) lost to it, and every state rendered the same grey.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  for (const kind of ["working", "done", "error"]) {
+    assert.match(
+      css,
+      new RegExp(`\\.info-dialog \\.service-status--${kind}`),
+      `.service-status--${kind} is not scoped under .info-dialog and will lose to .info-dialog p`
+    );
+  }
+  // Colour is the secondary signal; the sentence itself carries the state.
+  assert.match(appSource, /setServiceStatus\(\s*\n?\s*"Done\./);
+});
+
+test("the dialog's buttons are not flush against the note below them", () => {
+  // `.info-dialog p` carries a bottom margin and no top one, so an
+  // actions row with only margin-top left a measured 0px gap.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const rule = css.slice(css.indexOf(".info-dialog-actions {"));
+  assert.match(rule.slice(0, rule.indexOf("}")), /margin:\s*18px 0/);
+});
+
 // --- report ----------------------------------------------------------------
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);

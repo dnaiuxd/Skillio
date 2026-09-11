@@ -77,6 +77,32 @@ A workable split: keep the everyday copy on 8787 as the background service,
 and run the one you're editing on 8788 by hand, only when you want it. One
 service on the machine means the two can never contend for a port.
 
+`Skillio.command` offers to install a service on first run, which you don't
+want for the checkout you're editing — say no once and it stops asking. The
+answer is recorded in `backend/.no-background-service`, so it's per-checkout;
+delete that file to be asked again.
+
+## Handing the server to launchd from inside the app
+
+`POST /api/service/install` installs the launchd agent, which is a thing that
+survives reboots, so it is guarded more carefully than the rest:
+
+- **It checks `Origin` itself.** CORS does not cover this. A cross-site POST
+  with a simple content type is sent without a preflight, so the browser
+  delivers it and only hides the response — by which time the agent exists.
+- **It refuses while a scan is running**, because the handover restarts the
+  server and the next startup sweep would close that scan out as failed.
+- **It never starts the agent itself.** It runs the installer with
+  `--no-start` and spawns a detached helper that waits for the port to free
+  before bootstrapping. Starting it directly means launchd binding against a
+  port the current server still holds: `EADDRINUSE`, and `KeepAlive` turning
+  that into a restart loop.
+
+The page cannot learn the outcome from the request that started it, because
+that server exits. It polls `/api/service` until `managed` is true — not
+`/api/health`, which the outgoing server answers on its way out. Polling
+health reported success half a second in, before the replacement existed.
+
 Note that a Python change needs a restart — uvicorn serves the frontend from
 disk on every request, but `app.py` is loaded once at process start.
 

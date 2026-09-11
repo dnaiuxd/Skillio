@@ -899,6 +899,73 @@ main {
   margin-top: 10px;
 }
 
+/* Sits beside the Close button of the other dialogs, but this one has a
+   decision in it, so it needs two. */
+.info-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* Both sides. `.info-dialog p` carries a bottom margin and no top one, so
+     without this the note after the buttons sat flush against them — a 0px
+     gap, measured. */
+  margin: 18px 0;
+}
+
+/* Secondary prose inside a dialog: the caveat you read before deciding,
+   not the pitch. --ink-soft is 6.5:1 on --surface in light and 6.2:1 in
+   dark, so it stays AA at this size. */
+.info-dialog-note {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+/* Scoped under .info-dialog deliberately. `.info-dialog p` is (0,1,1) and
+   sets both colour and margin, so an unscoped `.service-status--done` at
+   (0,1,0) lost to it — every state rendered the same --ink-soft grey,
+   measured, with the status reading "done" in the colour of "working". */
+.info-dialog .service-status {
+  margin: 14px 0 0;
+  font-size: var(--text-sm);
+}
+
+.info-dialog .service-status--working { color: var(--ink-soft); }
+.info-dialog .service-status--done    { color: var(--ok); }
+.info-dialog .service-status--error   { color: var(--critical); }
+
+/* A button that reads as the link beside it: same colour, same underline on
+   hover. Not an <a>, because it does something rather than going somewhere. */
+.credit-action {
+  /* 2.5.8 wants 24px. The credit line is 4 lines from the rail's bottom
+     edge, so growing the box would push the layout; the coarse-pointer
+     overlay below restores a 44px target without taking any space. */
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.credit-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.credit-action:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+@media (pointer: coarse) {
+  .credit-action::after {
+    content: "";
+    position: absolute;
+    inset: -12px -8px;
+  }
+}
+
 .scan-field {
   display: flex;
   flex-direction: column;

@@ -167,7 +167,7 @@
       </div>
       <button id="scan-btn" class="btn btn-primary">Scan</button>
       <div id="scan-status" class="scan-status" role="status" hidden></div>
-      <p class="rail-credit"><a class="brand-link" data-repo-link target="_blank" rel="noopener noreferrer">Skillio</a><span class="credit-sep" aria-hidden="true">&middot;</span><span class="app-version" data-app-version hidden></span><a class="credit-link" href="https://dhavalnaik.com" target="_blank" rel="noopener noreferrer">dhavalnaik.com</a></p>
+      <p class="rail-credit"><span class="credit-service" id="service-offer" hidden><button type="button" class="credit-action" id="service-open">Run at login</button><span class="credit-sep" aria-hidden="true">&middot;</span></span><a class="brand-link" data-repo-link target="_blank" rel="noopener noreferrer">Skillio</a><span class="credit-sep" aria-hidden="true">&middot;</span><span class="app-version" data-app-version hidden></span><a class="credit-link" href="https://dhavalnaik.com" target="_blank" rel="noopener noreferrer">dhavalnaik.com</a></p>
     </aside>
 
     <main>
@@ -285,6 +285,33 @@
         and an install decision recorded against each one.
       </p>
       <button type="button" class="btn info-dialog-close" id="about-close" autofocus>Close</button>
+    </div>
+  </dialog>
+
+  <dialog class="info-dialog" id="service-dialog" aria-labelledby="service-dialog-title">
+    <div class="info-dialog-body">
+      <h2 class="info-dialog-title" id="service-dialog-title">Run Skillio at login</h2>
+      <p>
+        Skillio is running in a Terminal window right now, which means closing
+        that window stops it — and nothing brings it back after a restart.
+      </p>
+      <p>
+        Hand it to macOS instead and it starts automatically when you log in,
+        restarts itself if it ever crashes, and needs no window at all. Your
+        scan log and settings are untouched.
+      </p>
+      <p class="info-dialog-note">
+        Setting this up restarts the server, so this page will reconnect in a
+        moment. Don't do it while a scan is running.
+      </p>
+      <div class="info-dialog-actions">
+        <button type="button" class="btn btn-primary" id="service-confirm">Run at login</button>
+        <button type="button" class="btn" id="service-cancel">Not now</button>
+      </div>
+      <p class="service-status" id="service-status" role="status" hidden></p>
+      <p class="info-dialog-note">
+        To undo later: <code class="info-dialog-command">./macos/install-service.sh --uninstall</code>
+      </p>
     </div>
   </dialog>
 

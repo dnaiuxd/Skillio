@@ -9,6 +9,7 @@ bug sat on. They are cheap because none of this touches the network, the
 database or the skillspector binary.
 """
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -18,6 +19,7 @@ from unittest import mock
 
 import app
 import storage
+from fastapi import HTTPException
 from app import (_derive_name, _extract_score_and_verdict,
                  _parse_version, _report_fingerprint, _run_scan,
                  _trim_registry_report, _update_available)
@@ -1075,6 +1077,281 @@ class StderrCause(unittest.TestCase):
     def test_empty_stays_empty(self):
         self.assertEqual(app._stderr_cause(""), "")
         self.assertEqual(app._stderr_cause(None), "")
+
+
+class BackgroundServiceOffer(unittest.TestCase):
+    """Skillio.command offers to hand the server to launchd on first run.
+
+    Two things make this worth testing from the outside. The prompt blocks,
+    so a missing guard doesn't fail — it hangs, which is far worse than a
+    crash. And the launchd label is derived independently in both scripts,
+    so they can drift apart and leave the launcher asking about a service
+    the installer never installed."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+    LAUNCHER = (ROOT / "Skillio.command").read_text()
+    INSTALLER = (ROOT / "macos" / "install-service.sh").read_text()
+
+    def test_the_prompt_is_skipped_when_nobody_can_answer(self):
+        """A .command double-clicked in Finder gets a terminal. The same file
+        run from a script does not, and a prompt written to a closed pipe
+        waits forever — so the offer has to be guarded on an interactive
+        stdin, not just on whether a service exists. A missing guard here
+        does not fail the launcher, it hangs it."""
+        guards = [line for line in self.LAUNCHER.splitlines()
+                  if line.startswith("if ") and "$PLIST" in line]
+        self.assertEqual(len(guards), 1, "expected one guard on the offer")
+        self.assertIn("[ -t 0 ]", guards[0])
+
+    def test_end_of_input_does_not_record_a_decision(self):
+        """Ctrl-D is not "no". An earlier version treated a failed read as a
+        decline and wrote the marker, which permanently settled a question
+        the user never answered."""
+        # Bounded to the branch itself: a fixed window ran on past the `fi`
+        # into the reminder below, which mentions $DECLINED legitimately.
+        eof_arm = self.LAUNCHER[self.LAUNCHER.index("No answer"):]
+        eof_arm = eof_arm[:eof_arm.index("\n  fi")]
+        self.assertNotIn("$DECLINED", eof_arm)
+        self.assertIn("asked again", eof_arm)
+
+    def test_only_an_explicit_no_records_a_decline(self):
+        """The marker suppresses the question for good, so it has to be
+        written on one answer and no other path."""
+        self.assertEqual(self.LAUNCHER.count(': > "$DECLINED"'), 1)
+        no_arm = self.LAUNCHER.split("[Nn]*)", 1)[1].split(";;", 1)[0]
+        self.assertIn(': > "$DECLINED"', no_arm)
+
+    def _label_logic(self, script):
+        """The port-to-label mapping, normalised for whitespace."""
+        block = script.split('if [ "$PORT" = "8787" ]; then', 1)[1]
+        block = block.split("fi", 1)[0]
+        return [line.strip() for line in block.splitlines()
+                if line.strip() and "LOG=" not in line]
+
+    def test_both_scripts_derive_the_same_launchd_label(self):
+        """The launcher asks "is a service already installed?" by looking for
+        a plist; the installer decides what to call it. Drift between the two
+        means the launcher asks a question it already knows the answer to, on
+        every single launch."""
+        self.assertEqual(self._label_logic(self.LAUNCHER),
+                         self._label_logic(self.INSTALLER))
+
+    def test_the_decline_marker_is_ignored_by_git(self):
+        """It lives in backend/ beside the venv and the database, and it is
+        per-machine: committing one would silence the prompt for everybody."""
+        ignored = (self.ROOT / ".gitignore").read_text()
+        self.assertIn(".no-background-service", ignored)
+
+    def test_the_decline_path_offers_the_dock_and_the_service(self):
+        """Saying no to launchd should not also cost you the Dock icon: they
+        are separate things, and the window is worth having either way."""
+        no_arm = self.LAUNCHER.split("[Nn]*)", 1)[1].split(";;", 1)[0]
+        self.assertIn("Add to Dock", no_arm)
+        self.assertIn("./macos/install-service.sh", no_arm)
+
+    def test_a_declined_install_is_still_reminded_later(self):
+        """The offer is made once. Without a reminder, the way back is only
+        ever visible in the single run where it was turned down."""
+        self.assertIn('elif [ -f "$DECLINED" ]; then', self.LAUNCHER)
+
+    def test_nothing_opens_a_bare_tab_without_offering_the_real_window(self):
+        """Every `open "$URL"` is a browser tab with menus and an address bar
+        — the thing the Dock app exists to replace. The fallback inside
+        open_skillio is the one legitimate place for it."""
+        others = [line.strip() for line in self.LAUNCHER.splitlines()
+                  if 'open "$URL"' in line]
+        self.assertEqual(others, ['installed="$(skillio_app)" || { open "$URL"; return 1; }'])
+
+
+class StandaloneWindow(unittest.TestCase):
+    """Chrome's "Install page as app" and Safari's "Add to Dock" build a real
+    app bundle, and neither browser exposes that as anything a script can
+    call — Chrome's --app flag is ignored when Chrome is already running.
+    So the install stays manual; what the launcher can do is notice the app
+    afterwards and open it instead of a tab."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+    LAUNCHER = (ROOT / "Skillio.command").read_text()
+
+    def _run(self, home, installed=None):
+        """Exercise the real functions with `open` stubbed out, against a
+        HOME that contains whatever web app the case is about."""
+        start = self.LAUNCHER.index("skillio_app() {")
+        end = self.LAUNCHER.index("dock_hint() {")
+        functions = self.LAUNCHER[start:end]
+        if installed:
+            (home / installed).mkdir(parents=True)
+        script = (
+            'URL=http://example; open() { printf "open %s\\n" "$*"; }\n'
+            + functions
+            + '\nif open_skillio; then echo RC=0; else echo RC=1; fi\n'
+        )
+        proc = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True,
+            timeout=30, env={**os.environ, "HOME": str(home)},
+        )
+        return proc.stdout
+
+    def test_with_no_app_installed_it_falls_back_to_a_tab(self):
+        """And reports it, so the caller knows to explain how to get better."""
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d))
+        self.assertIn("open http://example", out)
+        self.assertIn("RC=1", out)
+
+    def test_it_prefers_a_chrome_web_app(self):
+        """Chrome's folder carries a .localized suffix that Finder hides, so
+        the obvious path is the wrong one."""
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d),
+                            "Applications/Chrome Apps.localized/Skillio.app")
+        self.assertIn("open -a", out)
+        self.assertIn("Skillio.app", out)
+        self.assertIn("RC=0", out)
+
+    def test_it_prefers_a_safari_web_app(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = self._run(Path(d), "Applications/Skillio.app")
+        self.assertIn("open -a", out)
+        self.assertIn("RC=0", out)
+
+
+class InstallerBuildsItsOwnVenv(unittest.TestCase):
+    """The installer used to refuse to run without a venv, printing the
+    commands to make one. That put a terminal between the one-click launcher
+    and the background service, which is the whole gap this closes."""
+
+    SCRIPT = Path(__file__).resolve().parent.parent / "macos" / "install-service.sh"
+    REQUIREMENTS = Path(__file__).resolve().parent / "requirements.txt"
+
+    def _fake_repo(self, tmp):
+        """Enough of a checkout for the script to orient itself: it derives
+        the repo root from its own location."""
+        (tmp / "macos").mkdir()
+        (tmp / "backend").mkdir()
+        shutil.copy(self.SCRIPT, tmp / "macos" / "install-service.sh")
+        shutil.copy(self.REQUIREMENTS, tmp / "backend" / "requirements.txt")
+        return tmp / "macos" / "install-service.sh"
+
+    def test_a_dry_run_reports_the_missing_venv_without_building_one(self):
+        """--dry-run promises to change nothing, and building a venv is a
+        change — it writes hundreds of megabytes and can take a minute."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            script = self._fake_repo(tmp)
+            proc = subprocess.run(
+                ["bash", str(script), "--dry-run"],
+                capture_output=True, text=True, timeout=120,
+                env={**os.environ, "SKILLIO_PORT": "8799"},
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("a real run would build one", proc.stdout)
+            self.assertFalse((tmp / "backend" / ".venv").exists(),
+                             "--dry-run built a venv")
+
+    def test_it_no_longer_tells_you_to_go_and_make_one(self):
+        text = self.SCRIPT.read_text()
+        self.assertNotIn("No venv found at", text)
+
+
+class RunAtLogin(unittest.TestCase):
+    """Installing a launchd agent from a web request. It survives reboots,
+    so the guards around it matter more than the happy path."""
+
+    def test_the_label_matches_what_the_installer_writes(self):
+        """SKILLIO_PORT is a string. Comparing it to the int 8787 is quietly
+        false, which named the default install com.skillio.gui.8787 — a
+        label the installer never writes, so every check for "is it already
+        installed?" would have answered no forever."""
+        self.assertEqual(app.SKILLIO_PORT, "8787")
+        self.assertEqual(app.LAUNCHD_LABEL, "com.skillio.gui")
+
+    def test_a_second_checkout_gets_its_own_label(self):
+        with mock.patch.object(app, "SKILLIO_PORT", "8788"):
+            label = ("com.skillio.gui" if app.SKILLIO_PORT == "8787"
+                     else f"com.skillio.gui.{app.SKILLIO_PORT}")
+        self.assertEqual(label, "com.skillio.gui.8788")
+
+    def _request(self, origin):
+        request = mock.Mock()
+        request.headers = {} if origin is None else {"origin": origin}
+        return request
+
+    def test_a_cross_site_post_is_refused(self):
+        """CORS alone does not stop this. A form-encoded POST is a simple
+        request: no preflight, so the browser sends it and only hides the
+        reply — by which time the agent would exist."""
+        for origin in ("https://example.com", "http://localhost:9999",
+                       "http://evil.localhost", "null"):
+            with self.subTest(origin=origin):
+                self.assertFalse(app._same_origin(self._request(origin)))
+
+    def test_the_apps_own_origin_is_allowed(self):
+        for origin in (f"http://localhost:{app.SKILLIO_PORT}",
+                       f"http://127.0.0.1:{app.SKILLIO_PORT}"):
+            with self.subTest(origin=origin):
+                self.assertTrue(app._same_origin(self._request(origin)))
+
+    def test_a_request_with_no_origin_is_allowed(self):
+        """curl, and same-origin navigations. The server binds 127.0.0.1
+        only, so there is no remote caller to worry about."""
+        self.assertTrue(app._same_origin(self._request(None)))
+
+    def test_managed_means_this_process_not_merely_an_installed_agent(self):
+        """A plist for a server someone is running by hand is exactly the
+        case the offer exists for, so it must not read as managed."""
+        with mock.patch.object(app, "_launchd_pid", return_value=os.getpid()):
+            self.assertTrue(app._service_state()["managed"])
+        with mock.patch.object(app, "_launchd_pid", return_value=os.getpid() + 1):
+            self.assertFalse(app._service_state()["managed"])
+        with mock.patch.object(app, "_launchd_pid", return_value=None):
+            self.assertFalse(app._service_state()["managed"])
+
+    def test_it_refuses_while_a_scan_is_running(self):
+        """The handover restarts the server. A scan caught in it would be
+        killed mid-run and closed out as failed by the next startup sweep."""
+        app._claim_scan_slot()
+        try:
+            with self.assertRaises(HTTPException) as caught:
+                app.install_service(self._request(None))
+            self.assertEqual(caught.exception.status_code, 409)
+        finally:
+            app._release_scan_slot()
+
+    def test_the_slot_is_released_again(self):
+        """It is claimed only to test it. Holding it would block scanning
+        until restart."""
+        with mock.patch.object(app, "_service_state",
+                               return_value={"supported": False, "managed": False}):
+            with self.assertRaises(HTTPException):
+                app.install_service(self._request(None))
+        self.assertTrue(app._claim_scan_slot())
+        app._release_scan_slot()
+
+    def test_the_handover_helper_quotes_the_plist_path(self):
+        """`{p!s:q}` is a shell idiom, not a Python format spec — it raises
+        ValueError, and only when the handover actually runs."""
+        captured = {}
+        with mock.patch.object(app.subprocess, "Popen",
+                               side_effect=lambda *a, **k: captured.update(argv=a[0])):
+            app._bootstrap_when_free("com.skillio.gui", Path("/tmp/a b/x.plist"), "8799")
+        script = captured["argv"][2]
+        self.assertIn("'/tmp/a b/x.plist'", script)
+        self.assertIn("iTCP:8799", script)
+
+    def test_the_helper_waits_before_bootstrapping(self):
+        """Without the wait launchd binds against a port we still hold, and
+        KeepAlive turns EADDRINUSE into a restart loop that runs the startup
+        sweep — and fails in-flight scans — on every lap."""
+        captured = {}
+        with mock.patch.object(app.subprocess, "Popen",
+                               side_effect=lambda *a, **k: captured.update(argv=a[0], kw=k)):
+            app._bootstrap_when_free("com.skillio.gui", Path("/tmp/x.plist"), "8787")
+        script = captured["argv"][2]
+        self.assertIn("lsof", script)
+        self.assertLess(script.index("lsof"), script.index("bootstrap"))
+        # It has to outlive the server that spawned it.
+        self.assertTrue(captured["kw"]["start_new_session"])
 
 
 if __name__ == "__main__":
