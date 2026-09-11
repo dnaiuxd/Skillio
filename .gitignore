@@ -34,3 +34,6 @@ node_modules/
 
 # "No thanks" to the background service, recorded so Skillio.command asks once
 .no-background-service
+
+# Project instructions for Claude Code — kept local, not published
+CLAUDE.md
