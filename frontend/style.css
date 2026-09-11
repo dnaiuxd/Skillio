@@ -2110,6 +2110,34 @@ main {
   color: var(--ink-soft);
 }
 
+/* One paragraph per notice, replacing a single string joined by blank lines.
+   The gap matches the blank line that used to separate them under the
+   container's `white-space: pre-wrap` — which stays, because coverageNotice
+   puts real newlines inside its own text. */
+.detail-error-notice {
+  margin: 0;
+}
+
+.detail-error-notice + .detail-error-notice {
+  margin-top: 1.5em;
+}
+
+/* The line saying what to do, lifted off the explanation above it. Inherits
+   the container's colour — on the warn card that is --medium, measured at
+   6.34:1 on --bg in light and 7.50:1 in dark, both clear of AA. */
+.detail-error-note {
+  display: block;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+/* Underlines usually mean "link". This one is inside a <strong> with no href
+   and no pointer affordance, which is the only thing keeping it honest. */
+.detail-error-note-action {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .detail-error-raw {
   margin-top: 12px;
   border-top: 1px solid var(--line);

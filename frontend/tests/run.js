@@ -130,7 +130,7 @@ vm.runInContext(
   { filename: "app.js" }
 );
 
-const { severityBand, bandClass, severityWord, coverageNotice,
+const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         gateStatusLabel, countBySeverity, isHighRisk, severityRank,
         showSourceError, clearSourceError, runScan,
         isScanning, syncScanState, updateNotice,
@@ -142,7 +142,7 @@ const { severityBand, bandClass, severityWord, coverageNotice,
         hideTips, allowTips } = sandbox;
 
 for (const [name, fn] of Object.entries({
-  severityBand, bandClass, severityWord, coverageNotice,
+  severityBand, bandClass, severityWord, coverageNotice, llmNotice,
   gateStatusLabel, countBySeverity, isHighRisk, severityRank,
   showSourceError, clearSourceError, runScan, isScanning, syncScanState,
   updateNotice, scanMode, isMcpMode, onScanModeChange, updateSourceType,
@@ -1241,6 +1241,110 @@ test("the dialog's buttons are not flush against the note below them", () => {
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
   const rule = css.slice(css.indexOf(".info-dialog-actions {"));
   assert.match(rule.slice(0, rule.indexOf("}")), /margin:\s*18px 0/);
+});
+
+
+// Both payloads below are real: the same repository, the same machine, the
+// same SKILLSPECTOR_PROVIDER, scanned minutes apart.
+const SCAN_ALL_CALLS_FAILED = {
+  llm_requested: true, llm_available: false,
+  llm_calls_attempted: 4, llm_calls_succeeded: 0, llm_degraded: true,
+};
+const SCAN_ONE_CALL_WORKED = {
+  llm_requested: true, llm_available: true,
+  llm_calls_attempted: 4, llm_calls_succeeded: 1, llm_degraded: true,
+};
+
+test("a configured provider is never reported as missing", () => {
+  // The bug: llm_available is "at least one call came back usable", and this
+  // was read as "a provider is configured". It sent people to change a
+  // setting that was already correct.
+  const n = llmNotice(SCAN_ALL_CALLS_FAILED);
+  assert.ok(n, "expected a notice");
+  const whole = n.text + " " + (n.note || "");
+  assert.ok(!/SKILLSPECTOR_PROVIDER/.test(whole),
+    "told the user to set a provider that was already set");
+  assert.match(n.text, /provider is set/);
+  assert.match(n.note, /Rescanning usually works/);
+});
+
+test("only a scan that attempted nothing blames the provider", () => {
+  const n = llmNotice({ llm_requested: true, llm_available: false,
+                        llm_calls_attempted: 0, llm_calls_succeeded: 0 });
+  assert.match(n.text, /SKILLSPECTOR_PROVIDER/);
+  // claude_cli needs no API key, so the key is conditional.
+  assert.match(n.text, /if your\s+provider needs one/);
+  // Nothing to act on beyond the setting itself.
+  assert.equal(n.note, undefined);
+});
+
+test("the same setup does not get two different diagnoses", () => {
+  // 0-of-4 and 1-of-4 differ only in luck. Neither may claim a config fault.
+  for (const meta of [SCAN_ALL_CALLS_FAILED, SCAN_ONE_CALL_WORKED]) {
+    const n = llmNotice(meta) || {};
+    assert.ok(!/SKILLSPECTOR_PROVIDER/.test((n.text || "") + (n.note || "")));
+  }
+});
+
+test("a partly degraded scan says how much it lost", () => {
+  const n = llmNotice(SCAN_ONE_CALL_WORKED);
+  assert.match(n.text, /3 of 4 calls/);
+  assert.match(n.text, /static analysis alone/);
+  assert.match(n.note, /Rescanning usually recovers them/);
+});
+
+test("the word to underline is actually present in the note", () => {
+  // appendNote falls back to plain text when it cannot find the action, so a
+  // drifting word would silently lose its underline rather than fail.
+  for (const meta of [SCAN_ALL_CALLS_FAILED, SCAN_ONE_CALL_WORKED]) {
+    const n = llmNotice(meta);
+    assert.ok(n.note.includes(n.action),
+      `action ${JSON.stringify(n.action)} missing from ${JSON.stringify(n.note)}`);
+  }
+});
+
+test("a clean LLM scan says nothing, and neither does an unasked one", () => {
+  assert.equal(llmNotice({ llm_requested: true, llm_available: true,
+                           llm_calls_attempted: 4, llm_calls_succeeded: 4 }), null);
+  assert.equal(llmNotice({ llm_requested: false }), null);
+  assert.equal(llmNotice(null), null);
+});
+
+test("reports predating the call counts still get the old diagnosis", () => {
+  // SkillSpector did not always emit these; guessing would be worse.
+  assert.match(llmNotice({ llm_requested: true, llm_available: false }).text,
+               /SKILLSPECTOR_PROVIDER/);
+  assert.equal(llmNotice({ llm_requested: true, llm_available: true }), null);
+});
+
+test("one failed call is not pluralised", () => {
+  const n = llmNotice({ llm_requested: true, llm_available: false,
+                        llm_calls_attempted: 1, llm_calls_succeeded: 0 });
+  assert.match(n.text, /all 1 call came back/);
+});
+
+test("the note is bold, on its own line, with one word underlined", () => {
+  // textContent cannot carry emphasis, so the notice is built from elements.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const note = css.slice(css.indexOf(".detail-error-note {"));
+  assert.match(note.slice(0, note.indexOf("}")), /display:\s*block/);
+  assert.match(note.slice(0, note.indexOf("}")), /font-weight:\s*[67]00/);
+  const action = css.slice(css.indexOf(".detail-error-note-action {"));
+  assert.match(action.slice(0, action.indexOf("}")), /text-decoration:\s*underline/);
+});
+
+test("notices are no longer flattened into one string", () => {
+  // The join() it replaced could not hold a <strong> or a <span>.
+  assert.ok(!/notices\.join/.test(appSource),
+    "notices are still joined into textContent, which drops the emphasis");
+  assert.match(appSource, /function renderNotices/);
+});
+
+test("the container keeps pre-wrap, which coverageNotice depends on", () => {
+  // coverageNotice puts real newlines inside its own text.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const rule = css.slice(css.indexOf(".detail-error {"));
+  assert.match(rule.slice(0, rule.indexOf("}")), /white-space:\s*pre-wrap/);
 });
 
 // --- report ----------------------------------------------------------------

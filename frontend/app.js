@@ -905,6 +905,55 @@ const COVERAGE_REASONS = {
 // fully inspected at 100% coverage. Unresolved references don't reduce
 // coverage, so that branch could never fire — a static_parse_limit is what
 // actually drops a file. Don't re-add it without a report that proves the case.
+// What SkillSpector means by `llm_available` is "at least one LLM call came
+// back usable" — not "a provider is configured". Reading it as the latter sent
+// people to fix a setting that was already correct, and did it at random: the
+// same machine with the same SKILLSPECTOR_PROVIDER produced 0-of-4 calls
+// succeeding on one run and 1-of-4 on the next, flipping the flag with it.
+//
+// The call counts tell the two apart. Nothing attempted means no provider;
+// attempts that all failed mean the provider is fine and the replies weren't
+// parseable, which another run often gets past.
+function llmNotice(meta) {
+  if (!meta || !meta.llm_requested) return null;
+
+  const NO_PROVIDER =
+    "LLM review was requested but no provider was configured, so this is a " +
+    "static-only scan. Set SKILLSPECTOR_PROVIDER (and an API key, if your " +
+    "provider needs one), then scan again.";
+
+  const attempted = Number(meta.llm_calls_attempted);
+  // Reports from before SkillSpector recorded call counts. The coarse flag is
+  // all there is, so fall back to it rather than guessing.
+  if (!Number.isFinite(attempted)) {
+    return meta.llm_available ? null : { text: NO_PROVIDER };
+  }
+  if (attempted === 0) return { text: NO_PROVIDER };
+
+  const succeeded = Number(meta.llm_calls_succeeded) || 0;
+  const failed = attempted - succeeded;
+  if (failed <= 0) return null;
+
+  const calls = (n) => `${n} call${n === 1 ? "" : "s"}`;
+  if (succeeded === 0) {
+    return {
+      text:
+        `Your LLM provider is set and was used — but all ${calls(attempted)} ` +
+        "came back in a form SkillSpector couldn't read, so this fell back to " +
+        "static analysis.",
+      note: "Nothing is misconfigured; Rescanning usually works.",
+      action: "Rescanning",
+    };
+  }
+  return {
+    text:
+      `LLM review only partly ran: ${failed} of ${calls(attempted)} came back ` +
+      "unreadable, so some files were judged by static analysis alone.",
+    note: "Rescanning usually recovers them.",
+    action: "Rescanning",
+  };
+}
+
 function coverageNotice(report) {
   const ac = (report && report.analysis_completeness) || null;
   if (!ac) return null;
@@ -1064,6 +1113,42 @@ function friendlyError(raw) {
 // Collapsed by default: the person who needs them knows to open it, and the
 // person who doesn't shouldn't have to read a traceback to learn their Wi-Fi
 // dropped.
+// Notices used to be one string joined by blank lines, which cannot carry
+// emphasis. Each is its own paragraph now. `white-space: pre-wrap` stays on
+// the container either way — coverageNotice puts real newlines inside its own
+// text and relies on them.
+//
+// A notice may end in a `note`: the line saying what to do, set apart from the
+// explanation above it, with `action` naming the one word to underline.
+function renderNotices(notices) {
+  for (const notice of notices) {
+    const { text, note, action } =
+      typeof notice === "string" ? { text: notice } : notice;
+    const p = document.createElement("p");
+    p.className = "detail-error-notice";
+    p.textContent = text;
+    if (note) appendNote(p, note, action);
+    els.detailError.appendChild(p);
+  }
+}
+
+function appendNote(parent, note, action) {
+  const strong = document.createElement("strong");
+  strong.className = "detail-error-note";
+  const at = action ? note.indexOf(action) : -1;
+  if (at < 0) {
+    strong.textContent = note;
+  } else {
+    strong.appendChild(document.createTextNode(note.slice(0, at)));
+    const word = document.createElement("span");
+    word.className = "detail-error-note-action";
+    word.textContent = action;
+    strong.appendChild(word);
+    strong.appendChild(document.createTextNode(note.slice(at + action.length)));
+  }
+  parent.appendChild(strong);
+}
+
 function renderScanError(raw) {
   resetDetailError();
   els.detailError.classList.add("detail-error--fail");
@@ -1275,9 +1360,9 @@ function renderDetail(skill) {
 
   renderGateCurrent(skill.status);
 
-  // SkillSpector silently degrades to static-only when the LLM pass was asked
-  // for but no provider is configured — say so rather than passing it off as
-  // a full scan.
+  // SkillSpector degrades to static-only when the LLM pass was asked for and
+  // could not deliver — whether because no provider is configured or because
+  // the calls failed. Say which, rather than passing either off as a full scan.
   const meta = (skill.report && skill.report.metadata) || {};
   const notices = [];
   // SkillSpector fails closed: a LOW band that would normally read SAFE is
@@ -1303,13 +1388,8 @@ function renderDetail(skill) {
         "cleared. Review the findings below and decide again."
     );
   }
-  if (meta.llm_requested && !meta.llm_available) {
-    notices.push(
-      "LLM review was requested but no provider was configured, so this is a " +
-        "static-only scan. Set SKILLSPECTOR_PROVIDER and the matching API key, " +
-        "then scan again."
-    );
-  }
+  const llm = llmNotice(meta);
+  if (llm) notices.push(llm);
   const coverage = coverageNotice(skill.report);
   if (coverage) notices.push(coverage);
   if (skill.error) {
@@ -1318,7 +1398,7 @@ function renderDetail(skill) {
     resetDetailError();
     els.detailError.classList.add("detail-error--warn");
     els.detailError.hidden = false;
-    els.detailError.textContent = notices.join("\n\n");
+    renderNotices(notices);
   } else {
     // Clear, don't just hide: leaving the previous skill's notice in the DOM
     // means any future path that unhides this element shows a warning about
