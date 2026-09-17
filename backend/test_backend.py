@@ -650,19 +650,19 @@ class PortFromEnvironment(unittest.TestCase):
             return app._port()
 
     def test_it_defaults_to_the_documented_port(self):
-        self.assertEqual(self._port(None), "8787")
-        self.assertEqual(self._port(""), "8787")
-        self.assertEqual(self._port("   "), "8787")
+        self.assertEqual(self._port(None), "9797")
+        self.assertEqual(self._port(""), "9797")
+        self.assertEqual(self._port("   "), "9797")
 
     def test_a_second_checkout_can_claim_its_own_port(self):
-        self.assertEqual(self._port("8788"), "8788")
-        self.assertEqual(self._port(" 8788 "), "8788")
+        self.assertEqual(self._port("9798"), "9798")
+        self.assertEqual(self._port(" 9798 "), "9798")
 
     def test_junk_falls_back_rather_than_reaching_the_allowlist(self):
-        for bad in ("not-a-port", "80 80", "8788; rm -rf /", "-1", "0",
-                    "65536", "99999", "8788.5"):
+        for bad in ("not-a-port", "80 80", "9798; rm -rf /", "-1", "0",
+                    "65536", "99999", "9798.5"):
             with self.subTest(value=bad):
-                self.assertEqual(self._port(bad), "8787")
+                self.assertEqual(self._port(bad), "9797")
 
 
 class SkillioSelfUpdate(unittest.TestCase):
@@ -1123,7 +1123,7 @@ class BackgroundServiceOffer(unittest.TestCase):
 
     def _label_logic(self, script):
         """The port-to-label mapping, normalised for whitespace."""
-        block = script.split('if [ "$PORT" = "8787" ]; then', 1)[1]
+        block = script.split('if [ "$PORT" = "9797" ]; then', 1)[1]
         block = block.split("fi", 1)[0]
         return [line.strip() for line in block.splitlines()
                 if line.strip() and "LOG=" not in line]
@@ -1265,18 +1265,18 @@ class RunAtLogin(unittest.TestCase):
     so the guards around it matter more than the happy path."""
 
     def test_the_label_matches_what_the_installer_writes(self):
-        """SKILLIO_PORT is a string. Comparing it to the int 8787 is quietly
-        false, which named the default install com.skillio.gui.8787 — a
+        """SKILLIO_PORT is a string. Comparing it to the int 9797 is quietly
+        false, which named the default install com.skillio.gui.9797 — a
         label the installer never writes, so every check for "is it already
         installed?" would have answered no forever."""
-        self.assertEqual(app.SKILLIO_PORT, "8787")
+        self.assertEqual(app.SKILLIO_PORT, "9797")
         self.assertEqual(app.LAUNCHD_LABEL, "com.skillio.gui")
 
     def test_a_second_checkout_gets_its_own_label(self):
-        with mock.patch.object(app, "SKILLIO_PORT", "8788"):
-            label = ("com.skillio.gui" if app.SKILLIO_PORT == "8787"
+        with mock.patch.object(app, "SKILLIO_PORT", "9798"):
+            label = ("com.skillio.gui" if app.SKILLIO_PORT == "9797"
                      else f"com.skillio.gui.{app.SKILLIO_PORT}")
-        self.assertEqual(label, "com.skillio.gui.8788")
+        self.assertEqual(label, "com.skillio.gui.9798")
 
     def _request(self, origin):
         request = mock.Mock()
@@ -1352,7 +1352,7 @@ class RunAtLogin(unittest.TestCase):
         captured = {}
         with mock.patch.object(app.subprocess, "Popen",
                                side_effect=lambda *a, **k: captured.update(argv=a[0], kw=k)):
-            app._bootstrap_when_free("com.skillio.gui", Path("/tmp/x.plist"), "8787")
+            app._bootstrap_when_free("com.skillio.gui", Path("/tmp/x.plist"), "9797")
         script = captured["argv"][2]
         self.assertIn("lsof", script)
         self.assertLess(script.index("lsof"), script.index("bootstrap"))
@@ -1384,9 +1384,9 @@ class LoginItemName(unittest.TestCase):
         """Two checkouts installed as services would otherwise be two
         identical rows in System Settings, with nothing to tell them apart."""
         text = self.INSTALLER.read_text()
-        block = text.split("LAUNCHER=", 1)[0].rsplit('if [ "$PORT" = "8787" ]', 1)
+        block = text.split("LAUNCHER=", 1)[0].rsplit('if [ "$PORT" = "9797" ]', 1)
         self.assertEqual(len(block), 2, "launcher is not chosen by port")
-        chooser = text.split('if [ "$PORT" = "8787" ]', 2)[2].split("fi", 1)[0]
+        chooser = text.split('if [ "$PORT" = "9797" ]', 2)[2].split("fi", 1)[0]
         self.assertIn("macos/Skillio\"", chooser)
         self.assertIn("macos/Skillio-Dev", chooser)
 
@@ -1418,7 +1418,7 @@ class LoginItemName(unittest.TestCase):
         """The agent passes SKILLIO_PORT through the environment, since the
         port is no longer on the command line."""
         text = self.LAUNCHER.read_text()
-        self.assertIn('"${SKILLIO_PORT:-8787}"', text)
+        self.assertIn('"${SKILLIO_PORT:-9797}"', text)
 
     def test_it_finds_the_repository_from_its_own_location(self):
         """The installer writes no paths into it, so it has to orient itself

@@ -14,15 +14,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/backend"
 
-# 8787 is what a normal install uses and what the docs say. Override it to
+# 9797 is what a normal install uses and what the docs say. Override it to
 # run a second checkout alongside the first — a development copy beside the
 # one you actually use:
 #
-#     SKILLIO_PORT=8788 ./Skillio.command
+#     SKILLIO_PORT=9798 ./Skillio.command
 #
 # The two keep separate scan logs already: the database lives inside each
 # checkout, so nothing is shared but the port.
-PORT="${SKILLIO_PORT:-8787}"
+PORT="${SKILLIO_PORT:-9797}"
 URL="http://localhost:$PORT"
 
 say() { printf '  %s\n' "$*"; }
@@ -81,7 +81,7 @@ fi
 
 # Same label the installer derives, so "is there already a service?" is asked
 # about the right one when a second checkout runs on another port.
-if [ "$PORT" = "8787" ]; then
+if [ "$PORT" = "9797" ]; then
   LABEL="com.skillio.gui"
 else
   LABEL="com.skillio.gui.$PORT"

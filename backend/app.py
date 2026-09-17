@@ -6,7 +6,7 @@ small FastAPI service: run scans, keep a history of scanned skills, and let
 you approve or reject a skill before installing it.
 
 Run with:
-    uvicorn app:app --reload --port 8787
+    uvicorn app:app --reload --port 9797
 
 Requires `skillspector` to be installed and on PATH:
     uv tool install git+https://github.com/NVIDIA/skillspector.git
@@ -56,12 +56,12 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 # line, and does not read this.
 #
 # It exists so a second checkout can run beside the first: a development copy
-# on 8788 next to the one you actually use on 8787. Hardcoding 8787 here meant
+# on 9798 next to the one you actually use on 9797. Hardcoding 9797 here meant
 # the second instance's own browser origin was refused by its own backend.
 def _port() -> str:
     raw = (os.environ.get("SKILLIO_PORT") or "").strip()
     # A junk value would otherwise be spliced straight into an allowed origin.
-    return raw if raw.isdigit() and 1 <= int(raw) <= 65535 else "8787"
+    return raw if raw.isdigit() and 1 <= int(raw) <= 65535 else "9797"
 
 
 SKILLIO_PORT = _port()
@@ -571,10 +571,10 @@ SERVICE_INSTALLER = REPO_ROOT / "macos" / "install-service.sh"
 # Mirrors the label the installer derives. Duplicated deliberately rather
 # than shelled out for: a status call happens on every page load.
 # SKILLIO_PORT is a string — see _port() — so this compares against one.
-# An int here silently produced "com.skillio.gui.8787", a label the installer
+# An int here silently produced "com.skillio.gui.9797", a label the installer
 # never writes, which would have made every install look like the first.
 LAUNCHD_LABEL = (
-    "com.skillio.gui" if SKILLIO_PORT == "8787" else f"com.skillio.gui.{SKILLIO_PORT}"
+    "com.skillio.gui" if SKILLIO_PORT == "9797" else f"com.skillio.gui.{SKILLIO_PORT}"
 )
 LAUNCHD_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{LAUNCHD_LABEL}.plist"
 

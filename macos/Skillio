@@ -19,4 +19,4 @@ cd "$REPO/backend"
 # exec, so this shell is replaced rather than left waiting: launchd tracks the
 # pid it started, and KeepAlive would otherwise be watching a wrapper instead
 # of the server it cares about.
-exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "${SKILLIO_PORT:-8787}"
+exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "${SKILLIO_PORT:-9797}"

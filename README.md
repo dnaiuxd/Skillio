@@ -26,7 +26,7 @@ git clone https://github.com/dnaiuxd/Skillio.git                 # this app
 cd Skillio && ./Skillio.command                                  # first run builds the venv
 ```
 
-That opens **http://localhost:8787**, and asks whether macOS should keep
+That opens **http://localhost:9797**, and asks whether macOS should keep
 Skillio running for you. Say yes and you never need a Terminal window again.
 
 ## Install
@@ -124,7 +124,7 @@ quietly disable the semantic analyzers.
 cd Skillio/backend
 uv venv --python '>=3.11' .venv          # or: python3 -m venv .venv
 uv pip install --python .venv/bin/python -r requirements.txt
-.venv/bin/uvicorn app:app --reload --port 8787
+.venv/bin/uvicorn app:app --reload --port 9797
 ```
 
 The backend serves the frontend, so there's nothing else to start.
@@ -194,7 +194,7 @@ Running a second checkout on another port? Its service has its own label
 
 ## Troubleshooting
 
-**Nothing on 8787, and the log repeats "address already in use".** Something
+**Nothing on 9797, and the log repeats "address already in use".** Something
 else holds the port and the agent's `KeepAlive` restarts it forever. That loop
 is not harmless: uvicorn runs the app's startup hook *before* it binds, and
 that hook closes out orphaned scans — so every lap marks an in-flight scan as

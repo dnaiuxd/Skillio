@@ -59,12 +59,12 @@ Useful if you're changing Skillio and want the copy you actually *use* left
 alone. Point the second one at another port:
 
 ```bash
-SKILLIO_PORT=8788 ./Skillio.command
+SKILLIO_PORT=9798 ./Skillio.command
 ```
 
 The two share nothing. The scan log lives inside each checkout
 (`backend/skillio.db`), so they keep separate histories, and the server builds
-its CORS allowlist from `SKILLIO_PORT` — hardcoding 8787 there used to mean the
+its CORS allowlist from `SKILLIO_PORT` — hardcoding 9797 there used to mean the
 second instance's own browser origin was refused by its own backend.
 
 The launchd agent runs `macos/Skillio`, a two-line wrapper that execs uvicorn,
@@ -81,13 +81,13 @@ one under a different name. So the everyday install and a development checkout
 are told apart in System Settings instead of being two identical rows.
 
 The background service takes the same variable, and at a non-default port it
-names itself and its log after it — `com.skillio.gui.8788` and
-`~/Library/Logs/skillio-8788.log` — so installing one cannot boot out the
-other. At 8787 the names are unchanged, so an existing install upgrades in
+names itself and its log after it — `com.skillio.gui.9798` and
+`~/Library/Logs/skillio-9798.log` — so installing one cannot boot out the
+other. At 9797 the names are unchanged, so an existing install upgrades in
 place.
 
-A workable split: keep the everyday copy on 8787 as the background service,
-and run the one you're editing on 8788 by hand, only when you want it. One
+A workable split: keep the everyday copy on 9797 as the background service,
+and run the one you're editing on 9798 by hand, only when you want it. One
 service on the machine means the two can never contend for a port.
 
 `Skillio.command` offers to install a service on first run, which you don't

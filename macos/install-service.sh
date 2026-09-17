@@ -11,12 +11,12 @@
 # into a checked-in plist, so this works from wherever the repo lives.
 set -euo pipefail
 
-PORT="${SKILLIO_PORT:-8787}"
+PORT="${SKILLIO_PORT:-9797}"
 # The label and the log carry the port when it isn't the default, so a second
 # checkout installed as its own service cannot boot out the first one or write
 # over its log. At the default port the names are unchanged, so an existing
 # install upgrades in place.
-if [ "$PORT" = "8787" ]; then
+if [ "$PORT" = "9797" ]; then
   LABEL="com.skillio.gui"
   LOG="$HOME/Library/Logs/skillio.log"
 else
@@ -95,7 +95,7 @@ UVICORN="$REPO/backend/.venv/bin/uvicorn"
 # The everyday install is "Skillio"; a second checkout on another port is
 # "Skillio-Dev", so the two are told apart in System Settings rather than
 # appearing as two identical rows. Same rule as the label and the log above.
-if [ "$PORT" = "8787" ]; then
+if [ "$PORT" = "9797" ]; then
   LAUNCHER="$REPO/macos/Skillio"
 else
   LAUNCHER="$REPO/macos/Skillio-Dev"
