@@ -66,6 +66,7 @@ const els = {
   updateResult: document.getElementById("update-result"),
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
+  envTag: document.getElementById("env-tag"),
 };
 
 // --- theme -----------------------------------------------------------------
@@ -548,6 +549,27 @@ function showAppVersion(version) {
   }
 }
 
+// 9797 is the everyday install; any other port is a second checkout run by
+// hand (CONTRIBUTING.md "Running two checkouts side by side"). Flagged next
+// to the theme toggle so which server answered this tab is never a guess —
+// the "DEV" word only ever appears there; the everyday install just shows
+// the port it's already on.
+function renderEnvTag(port) {
+  if (!port) return;
+  const isDev = port !== "9797";
+  els.envTag.textContent = "";
+  if (isDev) {
+    const label = document.createElement("span");
+    label.className = "env-tag-label";
+    label.textContent = "DEV";
+    els.envTag.append(label, document.createTextNode(` · localhost:${port}`));
+  } else {
+    els.envTag.textContent = `localhost:${port}`;
+  }
+  els.envTag.classList.toggle("env-tag--dev", isDev);
+  els.envTag.hidden = false;
+}
+
 // Never rejects and never writes: the repo may be unreachable, the machine
 // offline, GitHub rate-limiting. Callers decide what silence looks like.
 async function fetchSkillioUpdate({ refresh = false } = {}) {
@@ -655,6 +677,7 @@ async function checkHealth() {
     const res = await fetch(`${API}/health`);
     const data = await res.json();
     showAppVersion(data.skillio_version);
+    renderEnvTag(data.port);
     // Set rather than hardcoded in the markup, so the repository URL lives in
     // exactly one place. Both credit lines exist — the rail on desktop, the
     // footer on narrow — so both are filled. Until this arrives the word is

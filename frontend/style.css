@@ -572,8 +572,46 @@ button {
 
 /* Transparent padding takes the hit area to 44px (WCAG 2.5.8) while the
    visible track stays 52x28. */
-.theme-switch {
+.topbar-controls {
   margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Static — unlike .update-tag this links nowhere, so no hover/focus states
+   or pointer affordance. Neutral by default (the everyday 9797 install);
+   .env-tag--dev below swaps it to the update banner's attention colours for
+   a second checkout run by hand, so a stray click never lands on the copy
+   you actually use. Mono because the value is a port, same face as every
+   other literal path/value in the app. */
+.env-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.env-tag-label {
+  font-family: var(--font-body);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.env-tag--dev {
+  border-color: var(--attention-line);
+  background: var(--attention-bg);
+}
+
+.theme-switch {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;

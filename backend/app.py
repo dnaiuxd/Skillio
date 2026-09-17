@@ -717,6 +717,11 @@ def health() -> dict:
         # One home for the repository URL. The header's brand link reads it
         # from here rather than keeping a second copy in the markup.
         "repo_url": SKILLIO_REPO,
+        # Lets the header say which checkout answered — 9797 is the everyday
+        # install, anything else is a second checkout run by hand. Reusing
+        # SKILLIO_PORT rather than reading window.location.port keeps one
+        # source of truth for "what port is this instance on".
+        "port": SKILLIO_PORT,
     }
 
 
