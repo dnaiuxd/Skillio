@@ -729,11 +729,15 @@ main {
 
 /* ---------- Scan sidebar (full-height left rail) ---------- */
 
+/* No min-height here any more. It used to be calc(100vh - 78px), standing in
+   for "the viewport below the topbar" — but the topbar measures 81px, so the
+   rail was 3px too tall and every window, however large, carried a scrollbar
+   for those 3px. The shell below sizes the rail from the space that is
+   actually left instead of guessing at it. */
 .scan-sidebar {
   position: sticky;
   top: 0;
   align-self: stretch;
-  min-height: calc(100vh - 78px);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2457,6 +2461,55 @@ main {
 .no-findings {
   padding: 20px 0;
   color: var(--ink-soft);
+}
+
+/* Desktop — the shell owns the viewport, and only the log scrolls.
+   The page itself no longer scrolls at all, so the topbar and the rail stay
+   put and the window scrollbar is gone: what moves is the pane the scan log
+   is in, which is the only part with more content than room.
+   Declared BELOW the base rules it overrides — `.scan-sidebar` here is
+   (0,1,0) exactly like the base rule, so source order is what separates
+   them, and above this line the rail would keep its own height.
+   Paired with the tablet query below rather than overlapping it: 1025 and
+   1024 leave no width where both apply, and none where neither does. */
+@media (min-width: 1025px) {
+  body {
+    height: 100vh;
+    /* The banner, the topbar and the shell stack; the shell takes the rest. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* min-height: 0 is the part that does the work. A grid or flex child
+     defaults to min-height: auto, which refuses to shrink below its content —
+     the child would grow past the shell and take the page with it instead of
+     handing the overflow to its own scroller. */
+  .app {
+    flex: 1;
+    min-height: 0;
+    align-items: stretch;
+  }
+
+  /* Scrolls only when it must — on a window too short for the form — but
+     never shows a bar for it, so the app has one scrollbar and it is the
+     log's. Clipping instead would be the other way to remove the bar, and it
+     puts the Scan button somewhere you cannot reach. What is left still
+     reaches it: wheel, trackpad, and Tab, which scrolls focus into view. */
+  .scan-sidebar {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .scan-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  main {
+    height: 100%;
+    overflow-y: auto;
+  }
 }
 
 /* Tablet & below — the scan rail becomes a band on top of the log */

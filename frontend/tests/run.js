@@ -1111,6 +1111,43 @@ test("the copied line is not the grey it is trying not to be", () => {
   assert.equal(/#[0-9a-f]{3,6}/i.test(rule), false, "hardcoded colour");
 });
 
+test("only the log scrolls on desktop, and nothing guesses the topbar's height", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+
+  // The rail used to carry min-height: calc(100vh - 78px) as a stand-in for
+  // "the viewport below the topbar". The topbar measures 81px, so every
+  // window — at any size — was 3px too tall and showed a scrollbar for them.
+  const rail = css.match(/\n\.scan-sidebar \{([^}]*)\}/);
+  assert.ok(rail, "no .scan-sidebar rule");
+  assert.equal(/min-height:\s*calc\(100vh/.test(rail[1]), false,
+    "back to subtracting a hardcoded topbar height from 100vh");
+
+  // min-height: 0 is what lets the shell's children shrink and scroll
+  // themselves instead of pushing the page taller.
+  const shell = css.match(/@media \(min-width: 1025px\) \{([\s\S]*?)\n\}/);
+  assert.ok(shell, "no desktop shell query");
+  assert.match(shell[1], /\.app \{[^}]*min-height: 0/);
+  assert.match(shell[1], /main \{[^}]*overflow-y: auto/);
+  assert.match(shell[1], /body \{[^}]*overflow: hidden/);
+
+  // One scrollbar in the app, and it is the log's. The rail still scrolls on
+  // a window too short for the form — clipping it instead would put the Scan
+  // button out of reach — it just does not draw a bar for it.
+  assert.match(shell[1], /\.scan-sidebar \{[^}]*scrollbar-width: none/);
+  assert.match(shell[1], /\.scan-sidebar::-webkit-scrollbar \{[^}]*display: none/);
+  assert.match(shell[1], /\.scan-sidebar \{[^}]*overflow-y: auto/,
+    "the rail was clipped rather than silently scrollable — Scan becomes unreachable");
+
+  // Declared below the base rules it overrides: `.scan-sidebar` is (0,1,0) in
+  // both places, so source order is the only thing separating them.
+  assert.ok(css.indexOf("\n.scan-sidebar {") < css.indexOf("@media (min-width: 1025px)"),
+    "the desktop shell sits above the rules it overrides, so it loses the tie");
+
+  // 1025 and 1024 leave no width where both apply, and none where neither
+  // does — an overlap would page-scroll and pane-scroll at the same time.
+  assert.match(css, /@media \(max-width: 1024px\)/);
+});
+
 test("the update dialog's two buttons are the same size", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
