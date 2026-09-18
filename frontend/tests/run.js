@@ -1042,12 +1042,20 @@ test("the update tag opens the steps rather than navigating", () => {
 test("the update steps are copyable and name the checkout that answered", () => {
   // The command lives in the dialog, NOT the tooltip: a tooltip is gone the
   // moment the pointer moves toward it, so nothing in one can be copied.
-  assert.match(appSource, /cd \$\{repoPath\} && git pull && \.\/macos\/install-service\.sh/);
+  assert.match(appSource, /cd \$\{repoPath\} && \$\{update\}/);
   // From /api/health, never the ~/Skillio the docs name — a second checkout
   // updating the everyday install is a command that changes nothing visible.
-  assert.match(appSource, /if \(data\.repo_path\) setUpdateCommand\(data\.repo_path\)/);
+  assert.match(appSource, /setUpdateCommand\(data\.repo_path\)/);
   assert.equal(/cd ~\/Skillio/.test(appSource), false,
     "hardcoded install path — wrong for every second checkout");
+  // A server too old to report a path still gets a usable command. This is
+  // every install between the pull and the restart: uvicorn serves this file
+  // from disk while app.py stays as loaded, so the frontend runs ahead of the
+  // backend, and that is exactly when this dialog gets opened. It shipped
+  // showing an empty box.
+  assert.match(appSource, /repoPath \? .* : update/);
+  assert.equal(/if \(data\.repo_path\)/.test(appSource), false,
+    "guarded again, which leaves the command empty against an older server");
 });
 
 test("the update dialog's two buttons are the same size", () => {

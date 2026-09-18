@@ -571,9 +571,17 @@ function renderEnvTag(port) {
 // Written when /api/health answers rather than when the dialog opens: the
 // directory is the one part of this that differs per checkout, and health is
 // the single place it gets reported.
+//
+// Without a path it drops the `cd` rather than the whole command. A server
+// too old to report one is not hypothetical — it is every install between
+// the pull and the restart, because uvicorn serves this file from disk while
+// app.py stays as it was loaded. That is exactly when someone opens this
+// dialog, and an empty box then is worse than a command you run where you
+// already are. The note under it says which directory that has to be.
 function setUpdateCommand(repoPath) {
+  const update = "git pull && ./macos/install-service.sh";
   els.updateDialogCommand.textContent =
-    `cd ${repoPath} && git pull && ./macos/install-service.sh`;
+    repoPath ? `cd ${repoPath} && ${update}` : update;
 }
 
 // The tag says a release exists; this says what to do about it. A dialog
@@ -703,7 +711,7 @@ async function checkHealth() {
     const data = await res.json();
     showAppVersion(data.skillio_version);
     renderEnvTag(data.port);
-    if (data.repo_path) setUpdateCommand(data.repo_path);
+    setUpdateCommand(data.repo_path);
     // Set rather than hardcoded in the markup, so the repository URL lives in
     // exactly one place. Both credit lines exist — the rail on desktop, the
     // footer on narrow — so both are filled. Until this arrives the word is
