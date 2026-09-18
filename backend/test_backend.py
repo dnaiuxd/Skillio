@@ -665,6 +665,34 @@ class PortFromEnvironment(unittest.TestCase):
                 self.assertEqual(self._port(bad), "9797")
 
 
+class FrontendRevalidates(unittest.TestCase):
+    """An update that the browser never fetches is an update that did not
+    happen. Without Cache-Control the browser applies its own heuristic and can
+    reuse index.html and app.js without asking, which shipped as a release
+    whose UI stayed a version behind while the footer — read from /api/health
+    over the network — already showed the new number."""
+
+    def test_the_page_itself_is_revalidated(self):
+        self.assertEqual(app.index().headers["cache-control"], "no-cache")
+
+    def test_every_other_frontend_file_is_too(self):
+        """app.js is the one that actually strands people, and it is served by
+        the mount rather than the route above."""
+        static = app.NoCacheStaticFiles(directory=str(app.FRONTEND_DIR))
+        path = app.FRONTEND_DIR / "app.js"
+        response = static.file_response(path, os.stat(path), {"type": "http",
+                                                              "method": "GET",
+                                                              "headers": []})
+        self.assertEqual(response.headers["cache-control"], "no-cache")
+
+    def test_the_mount_uses_it(self):
+        """A plain StaticFiles here would leave every file but / uncached-
+        controlled, which is the whole failure again."""
+        mounted = [r for r in app.app.routes if getattr(r, "name", "") == "frontend"]
+        self.assertTrue(mounted, "the frontend mount went missing")
+        self.assertIsInstance(mounted[0].app, app.NoCacheStaticFiles)
+
+
 class SkillioSelfUpdate(unittest.TestCase):
     """Skillio checking for its own release. This runs on every page load, so
     it must be cheap and it must never break the page — the repository can be

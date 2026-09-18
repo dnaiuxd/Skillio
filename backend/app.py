@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 import storage
@@ -944,9 +944,32 @@ def delete_skill(skill_id: int) -> dict:
 
 
 # --- Serve the static frontend last, so /api/* routes above take priority ---
+
+# "no-cache" does not mean "do not store" — it means "ask before reusing".
+# With no Cache-Control at all the browser falls back to its own heuristic and
+# may serve index.html and app.js from disk WITHOUT asking, so an updated
+# Skillio keeps rendering the previous release's interface. That failure is
+# quiet in the worst way: the footer version is read from /api/health over the
+# network, so it updates on time and the app looks current while the UI is a
+# release behind. Both responses below already carry an ETag, so revalidating
+# costs an empty 304 rather than the file.
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles, revalidated rather than assumed fresh. file_response is the
+    hook because it also builds the 304, which would otherwise go back without
+    the header and leave the browser guessing again on the next load."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "index.html")
+    return FileResponse(FRONTEND_DIR / "index.html", headers=NO_CACHE)
 
 
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
+app.mount("/", NoCacheStaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
