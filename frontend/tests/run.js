@@ -1058,6 +1058,38 @@ test("the update steps are copyable and name the checkout that answered", () => 
     "guarded again, which leaves the command empty against an older server");
 });
 
+test("the banner's Update button copies the command, it does not rebuild it", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  assert.match(html, /<button[^>]*id="skillio-banner-copy"[^>]*>Update<\/button>/);
+  // Read back out of the dialog. A second copy of the command here would
+  // drift from that one the moment either changed, and both would claim to
+  // be the thing you should run.
+  const fn = appSource.slice(appSource.indexOf("async function copyUpdateCommand"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /els\.updateDialogCommand\.textContent/);
+  assert.equal(/git pull &&/.test(body), false, "the command is built twice");
+  // Refusing the clipboard is not an error state — the dialog puts the same
+  // command on screen, where it can still be selected by hand.
+  assert.match(body, /catch[\s\S]*openUpdateDialog\(\)/);
+});
+
+test("the copy confirmation is announced, not just shown", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  // The label change is visual only: a screen reader meets it just if focus
+  // happens to be on the button.
+  const region = html.match(/<span[^>]*id="skillio-banner-copied"[^>]*>/)[0];
+  assert.match(region, /role="status"/);
+  assert.match(region, /hidden/);
+  const fn = appSource.slice(appSource.indexOf("async function copyUpdateCommand"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  // Revealed BEFORE it is written, as everywhere else in this app: a live
+  // region that already holds its text when it appears announces nothing.
+  const reveal = body.indexOf("skillioBannerCopied.hidden = false");
+  const write = body.indexOf("skillioBannerCopied.textContent =");
+  assert.ok(reveal !== -1 && write !== -1, "no reveal/write pair");
+  assert.ok(reveal < write, "written before it is revealed, so it is never announced");
+});
+
 test("the update dialog's two buttons are the same size", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");

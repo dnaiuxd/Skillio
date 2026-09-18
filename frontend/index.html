@@ -32,12 +32,21 @@
        revealed before it is written, or a live region announces nothing. -->
   <div class="app-banner" id="skillio-banner" role="status" hidden>
     <div class="app-banner-inner">
+      <!-- Same geometry as the ⓘ trigger, turned over: stem above, dot below.
+           Decorative (aria-hidden) — the sentence beside it carries the news. -->
       <svg class="app-banner-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
-        <path d="M12 16.4V8.2M8.5 11.7 12 8.2l3.5 3.5" stroke="currentColor" stroke-width="1.6"
-          stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M12 7.25v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        <circle cx="12" cy="16.1" r="1.05" fill="currentColor" />
       </svg>
       <p class="app-banner-text" id="skillio-banner-text"></p>
+      <button type="button" class="btn app-banner-btn" id="skillio-banner-copy">Update</button>
+      <!-- The button's own label changes to "Copied", which a screen reader
+           only meets if focus happens to be there. This says it out loud, and
+           says the part the label has no room for. Revealed before it is
+           written, as everywhere else — a live region announces nothing if the
+           text is already in it when it appears. -->
+      <span class="visually-hidden" id="skillio-banner-copied" role="status" hidden></span>
       <a class="btn app-banner-btn" id="skillio-banner-link" target="_blank" rel="noopener noreferrer">
         View on GitHub &#8599;
       </a>

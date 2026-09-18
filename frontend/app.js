@@ -61,6 +61,8 @@ const els = {
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
   envTag: document.getElementById("env-tag"),
+  skillioBannerCopy: document.getElementById("skillio-banner-copy"),
+  skillioBannerCopied: document.getElementById("skillio-banner-copied"),
   updateDialog: document.getElementById("update-dialog"),
   updateDialogCommand: document.getElementById("update-dialog-command"),
   updateDialogLink: document.getElementById("update-dialog-link"),
@@ -582,6 +584,35 @@ function setUpdateCommand(repoPath) {
   const update = "git pull && ./macos/install-service.sh";
   els.updateDialogCommand.textContent =
     repoPath ? `cd ${repoPath} && ${update}` : update;
+}
+
+let copiedTimer = null;
+
+// Skillio still does not update itself — this only saves the typing. The
+// command is read back out of the dialog rather than built again here, so
+// there is one string: a second copy would drift the moment the first one
+// changed, and both claim to be what you should run.
+async function copyUpdateCommand() {
+  const command = els.updateDialogCommand.textContent;
+  // Nothing to copy means /api/health has not answered yet. The dialog says
+  // more than this button can anyway.
+  if (!command) return openUpdateDialog();
+  try {
+    await navigator.clipboard.writeText(command);
+  } catch (e) {
+    // Clipboard access can simply be refused. Putting the command on screen
+    // leaves it selectable by hand, which is where this started.
+    return openUpdateDialog();
+  }
+  els.skillioBannerCopy.textContent = "Copied";
+  els.skillioBannerCopied.hidden = false;
+  els.skillioBannerCopied.textContent = "Command copied — paste it in a terminal.";
+  clearTimeout(copiedTimer);
+  copiedTimer = setTimeout(() => {
+    els.skillioBannerCopy.textContent = "Update";
+    els.skillioBannerCopied.hidden = true;
+    els.skillioBannerCopied.textContent = "";
+  }, 4000);
 }
 
 // The tag says a release exists; this says what to do about it. A dialog
@@ -1811,6 +1842,7 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("mousemove", allowTips);
 document.addEventListener("focusin", allowTips);
 els.skillioBannerClose.addEventListener("click", dismissSkillioBanner);
+els.skillioBannerCopy.addEventListener("click", copyUpdateCommand);
 els.skillioUpdate.addEventListener("click", openUpdateDialog);
 els.updateDialogClose.addEventListener("click", () => els.updateDialog.close());
 // The backdrop is a pseudo-element, so a click on it targets the <dialog>.
