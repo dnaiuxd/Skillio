@@ -1138,11 +1138,86 @@ const SCAN_FAILURES = [
       "isn't there looks like.",
   },
   {
+    when: /refusing to resolve a (?:symlinked|junctioned) input|symlinked parent/i,
+    lead: "That path is a symbolic link, and SkillSpector won't follow one.",
+    hint:
+      "It refuses a linked path, or one with a linked folder anywhere above " +
+      "it, rather than quietly resolve somewhere you didn't mean. Type the " +
+      "real path the link points to.",
+  },
+  {
     when: /invalid zip file/i,
     lead: "That .zip couldn't be opened.",
     hint:
       "It may have been damaged on the way down, or it may not be a zip at " +
       "all. Download it again, or unzip it yourself and scan the folder.",
+  },
+  {
+    // A symbolic link anywhere in the archive stops the extraction before a
+    // single file is read — SkillSpector rejects link entries outright
+    // rather than skipping them, because a link inside a zip can point
+    // anywhere on the machine that unpacks it. The same link in a clone or a
+    // folder is simply skipped, which is why the answer is to scan the
+    // source and not the archive.
+    when: /zip links are not supported/i,
+    lead: "That .zip contains a symbolic link, and SkillSpector won't unpack one.",
+    hint:
+      "A link inside an archive can point anywhere on the Mac that opens " +
+      "it, so SkillSpector refuses the whole archive rather than the one " +
+      "link — nothing in it was read. Go back to the log and scan the " +
+      "project's GitHub address instead: a link in a clone is skipped, not " +
+      "fatal.",
+  },
+  {
+    when: /encrypted zip entries are not supported/i,
+    lead: "That .zip is password-protected, and SkillSpector won't open one.",
+    hint:
+      "It can't read what it can't decrypt, and a report on an archive it " +
+      "never opened would say nothing useful. Unprotect the archive, or go " +
+      "back to the log and scan the project's GitHub address instead.",
+  },
+  {
+    // Device nodes, fifos, and entries whose recorded mode disagrees with
+    // what they actually are. Same refusal as a link, same way out.
+    when: /zip special-file entries are not supported|zip entry type is inconsistent|zip directory entry contains file data/i,
+    lead: "That .zip holds an entry that isn't an ordinary file or folder.",
+    hint:
+      "Device nodes, pipes, and entries whose recorded type contradicts " +
+      "their contents are refused rather than unpacked, so nothing in the " +
+      "archive was read. Go back to the log and scan the project's GitHub " +
+      "address instead — entries like these are skipped there, not fatal.",
+  },
+  {
+    // The only entry in this table that describes an attack rather than an
+    // inconvenience, so it is the only one that says so.
+    when: /zip-slip|would escape extraction directory/i,
+    lead: "That .zip has an entry that would write outside the folder it unpacks into.",
+    hint:
+      "This is the one failure here worth a second look: an ordinary " +
+      "archive has no reason to do it, and the trick has a name — zip-slip " +
+      "— because it has been used on purpose. Check where the file came " +
+      "from before you trust it. If the project is one you know, scan its " +
+      "GitHub address instead.",
+  },
+  {
+    // Duplicate targets are compared casefolded, so this fires on a Mac for
+    // an archive that was perfectly consistent where it was built.
+    when: /duplicate extraction paths|conflicts with a directory|conflicts with a file/i,
+    lead: "Two entries in that .zip claim the same place on disk.",
+    hint:
+      "Most often the archive was built where filenames are case-sensitive " +
+      "and unpacked here where they aren't, so README.md and readme.md land " +
+      "on top of each other. Nothing was read. Go back to the log and scan " +
+      "the project's GitHub address instead.",
+  },
+  {
+    when: /expanded beyond its declared size|size did not match its declaration|central-directory entry count is inconsistent/i,
+    lead: "That .zip doesn't match its own table of contents.",
+    hint:
+      "Something inside it is a different size than the archive claims, " +
+      "which means it was damaged on the way down or altered after it was " +
+      "built. Download it again from the source — and if it fails the same " +
+      "way twice, don't trust it.",
   },
   {
     when: /was not found on path/i,
@@ -1157,6 +1232,30 @@ const SCAN_FAILURES = [
     hint:
       "That usually means SkillSpector's report format has moved on. Use " +
       "Check for updates in the left column, then scan again.",
+  },
+  {
+    // SkillSpector's own limit on reading a source in, which is not the
+    // subprocess timeout below and is not fixed by raising it. Ahead of the
+    // cap rule: "ingest exceeded" and "exceeded ingest" are one word apart.
+    when: /ingest exceeded its time limit/i,
+    lead: "SkillSpector ran out of time reading the source in, before the scan itself started.",
+    hint:
+      "This is its own limit on taking a source in, not Skillio's limit on " +
+      "the whole scan, so giving the scan longer wouldn't help. A very " +
+      "large or very deeply nested source hits it — scan a subfolder of the " +
+      "project instead.",
+  },
+  {
+    // Zip, clone, download and plain file all share these caps, so this says
+    // nothing about zips specifically — and must not send anyone to GitHub,
+    // where INGEST_MAX_BYTES applies just the same.
+    when: /exceeded (?:ingest|ingest entry|extracted-entry|central-directory metadata) cap/i,
+    lead: "That source is bigger than SkillSpector will take in.",
+    hint:
+      "There are caps on how many files it will read and how far an archive " +
+      "may expand, and this is over one of them. The same caps apply to a " +
+      "clone, so a GitHub address won't get past it — scan a subfolder of " +
+      "the project instead.",
   },
   {
     when: /scan timed out after (\d+)s/i,

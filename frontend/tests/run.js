@@ -618,6 +618,31 @@ const RAW = {
     "skillspector produced no output (exit code 2). stderr: Error: Invalid zip file: \n" +
     "/private/tmp/claude-501/-Users-dnaiuxd-Projects-skillio/95df2a3f-8769-45f5-898b-\n" +
     "506b13408ed7/scratchpad/fake.zip",
+  zipLink:
+    "skillspector produced no output (exit code 2). stderr: Error: Zip links " +
+    "are not supported",
+  zipEncrypted: "skillspector produced no output (exit code 2). stderr: Error: Encrypted zip entries are not supported",
+  zipSpecial: "skillspector produced no output (exit code 2). stderr: Error: Zip special-file entries are not supported",
+  zipInconsistent: "skillspector produced no output (exit code 2). stderr: Error: Zip entry type is inconsistent",
+  zipSlip: "skillspector produced no output (exit code 2). stderr: Error: Zip entry would escape extraction directory (zip-slip)",
+  zipSlipPath: "skillspector produced no output (exit code 2). stderr: Error: Zip entry has an unsafe or ambiguous path (zip-slip)",
+  zipDuplicate: "skillspector produced no output (exit code 2). stderr: Error: Zip contains duplicate extraction paths",
+  zipConflict: "skillspector produced no output (exit code 2). stderr: Error: Zip file entry conflicts with a directory",
+  zipTruncated: "skillspector produced no output (exit code 2). stderr: Error: Zip member size did not match its declaration",
+  zipCap:
+    "skillspector produced no output (exit code 2). stderr: Error: Zip exceeded ingest cap: 90000 " +
+    "members > INGEST_MAX_ZIP_MEMBERS (50000)",
+  gitCap:
+    "skillspector produced no output (exit code 2). stderr: Error: Git clone exceeded ingest entry " +
+    "cap: > INGEST_MAX_TREE_ENTRIES (200000)",
+  ingestTime: "skillspector produced no output (exit code 2). stderr: Error: Zip ingest exceeded its time limit",
+  // Kept wrapped exactly as the CLI emitted it: the break lands inside the
+  // path, one character after the phrase being matched.
+  linkedInput:
+    "skillspector produced no output (exit code 2). stderr: Error: Refusing " +
+    "to resolve a symlinked input: \n/private/tmp/claude-501/-Users-dnaiuxd-" +
+    "Projects-skillio/406e0b2c-8225-46eb-b2d6-\n1edd28e3e304/scratchpad/" +
+    "linktest/linked",
   timeout: "Scan timed out after 3600s",
   missing:
     "skillspector was not found on PATH. Install it first: `uv tool install " +
@@ -658,6 +683,74 @@ test("a real registry failure blames the registry, not the user", () => {
   const { lead, hint } = friendlyError(RAW.registry);
   assert.match(lead, /MCP Registry stopped answering/);
   assert.match(hint, /Nothing is wrong with your setup/);
+});
+
+test("a symlink in a zip sends you to the source, not back to the zip", () => {
+  // Verified against the real failure: one `AGENTS.md -> CLAUDE.md` entry in
+  // an 815-entry archive, and SkillSpector reads none of it. The same tree
+  // scanned as a directory reports normally, so the answer has to name the
+  // other route rather than suggest re-downloading the same archive.
+  const { lead, hint } = friendlyError(RAW.zipLink);
+  assert.match(lead, /symbolic link/);
+  assert.match(hint, /GitHub/);
+  // The neighbouring zip rule says "download it again", which here would
+  // hand back a byte-identical archive that fails byte-identically.
+  assert.equal(/download it again/i.test(hint), false);
+});
+
+test("the ingest time limit is not read as the ingest size cap", () => {
+  // "Zip ingest exceeded its time limit" and "Zip exceeded ingest cap" are
+  // one word order apart. Matching the wrong one sends you to a subfolder
+  // for a size problem you don't have.
+  assert.match(friendlyError(RAW.ingestTime).lead, /ran out of time/);
+  assert.match(friendlyError(RAW.zipCap).lead, /bigger than/);
+  assert.match(friendlyError(RAW.gitCap).lead, /bigger than/);
+});
+
+test("the ingest cap does not send anyone to GitHub", () => {
+  // INGEST_MAX_BYTES applies to a clone exactly as it does to a zip, so the
+  // advice that works for every other zip failure is wrong for this one.
+  for (const raw of [RAW.zipCap, RAW.gitCap]) {
+    const { hint } = friendlyError(raw);
+    assert.match(hint, /subfolder/);
+    assert.match(hint, /same caps apply to a clone/);
+  }
+});
+
+test("an escaping entry is called out as deliberate, not as a mishap", () => {
+  // Every other zip rule describes an inconvenience. This one describes an
+  // archive built to write somewhere it shouldn't, and has to read that way.
+  for (const raw of [RAW.zipSlip, RAW.zipSlipPath]) {
+    const { lead, hint } = friendlyError(raw);
+    assert.match(lead, /outside the folder/);
+    assert.match(hint, /zip-slip/);
+    assert.match(hint, /where the file came from/);
+  }
+});
+
+test("every zip rejection keeps its own answer apart from its neighbours", () => {
+  // These strings differ by a word or two and the regexes are alternations,
+  // so a careless one swallows its neighbour and both render the same.
+  // One representative per rule. Entries that share a rule on purpose are
+  // asserted below instead — grouping is the point, collision is the bug.
+  const keys = [
+    "zip", "zipLink", "zipEncrypted", "zipSpecial", "zipSlip",
+    "zipDuplicate", "zipTruncated", "zipCap", "ingestTime", "linkedInput",
+  ];
+  const leads = keys.map((k) => friendlyError(RAW[k]).lead);
+  assert.equal(new Set(leads).size, keys.length, `two rules collided: ${leads}`);
+});
+
+test("rejections with the same answer are deliberately given the same words", () => {
+  // A special-file entry and a self-contradicting one are the same problem
+  // to the reader and have the same way out, so they share a rule. Split
+  // them only if the advice ever diverges.
+  const same = (a, b) =>
+    assert.equal(friendlyError(RAW[a]).lead, friendlyError(RAW[b]).lead);
+  same("zipSpecial", "zipInconsistent");
+  same("zipSlip", "zipSlipPath");
+  same("zipDuplicate", "zipConflict");
+  same("zipCap", "gitCap");
 });
 
 test("a timeout is reported in minutes, not in seconds", () => {
