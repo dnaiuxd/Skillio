@@ -970,6 +970,20 @@ main {
   font-size: var(--text-sm);
 }
 
+/* Reports what just happened, so it reads at full strength rather than in the
+   --ink-soft the caveats use. Scoped under .info-dialog on purpose: bare, at
+   (0,1,0), it loses to `.info-dialog p` at (0,1,1) and renders in exactly the
+   grey it is trying not to be — measured at rgb(92,85,75), which is
+   --ink-soft, not --ok. The same tie the handover states lost years ago.
+   Once it applies: --ok on the dialog surface is 5.81:1 light, 6.81:1 dark,
+   both past 1.4.3 AA for this size. */
+.info-dialog .update-copied {
+  margin: 0 0 8px;
+  color: var(--ok);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 .scan-field {
   display: flex;
   flex-direction: column;

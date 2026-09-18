@@ -45,13 +45,11 @@
         <circle cx="12" cy="16.8" r="1" fill="currentColor" />
       </svg>
       <p class="app-banner-text" id="skillio-banner-text"></p>
-      <button type="button" class="btn app-banner-btn" id="skillio-banner-copy">Update</button>
-      <!-- The button's own label changes to "Copied", which a screen reader
-           only meets if focus happens to be there. This says it out loud, and
-           says the part the label has no room for. Revealed before it is
-           written, as everywhere else — a live region announces nothing if the
-           text is already in it when it appears. -->
-      <span class="visually-hidden" id="skillio-banner-copied" role="status" hidden></span>
+      <!-- Says what the click does, not what it wishes it did: Skillio does
+           not update itself. The dialog it opens carries the rest — a label
+           cannot hold "and then run it in a terminal", and the modal takes
+           focus anyway, so a screen reader meets the whole explanation. -->
+      <button type="button" class="btn app-banner-btn" id="skillio-banner-copy">Copy command</button>
       <a class="btn app-banner-btn" id="skillio-banner-link" target="_blank" rel="noopener noreferrer">
         View on GitHub &#8599;
       </a>
@@ -322,6 +320,11 @@
         It fetches the new release, brings dependencies up to date and
         restarts the server. <strong>Your scan log is untouched.</strong>
       </p>
+      <!-- Set before the dialog opens, so showModal announces it along with
+           everything else rather than needing a live region of its own.
+           Empty when the dialog was opened from the version tag, which
+           copies nothing. -->
+      <p class="update-copied" id="update-dialog-copied" hidden></p>
       <p><code class="info-dialog-command" id="update-dialog-command"></code></p>
       <p class="info-dialog-note">
         The path is the checkout answering this page, which is not always the

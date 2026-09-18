@@ -62,8 +62,8 @@ const els = {
   themeColor: document.querySelector('meta[name="theme-color"]'),
   envTag: document.getElementById("env-tag"),
   skillioBannerCopy: document.getElementById("skillio-banner-copy"),
-  skillioBannerCopied: document.getElementById("skillio-banner-copied"),
   updateDialog: document.getElementById("update-dialog"),
+  updateDialogCopied: document.getElementById("update-dialog-copied"),
   updateDialogCommand: document.getElementById("update-dialog-command"),
   updateDialogLink: document.getElementById("update-dialog-link"),
   updateDialogClose: document.getElementById("update-dialog-close"),
@@ -586,39 +586,42 @@ function setUpdateCommand(repoPath) {
     repoPath ? `cd ${repoPath} && ${update}` : update;
 }
 
-let copiedTimer = null;
-
-// Skillio still does not update itself — this only saves the typing. The
-// command is read back out of the dialog rather than built again here, so
-// there is one string: a second copy would drift the moment the first one
-// changed, and both claim to be what you should run.
+// Skillio still does not update itself — this saves the typing and then says
+// so. The command is read back out of the dialog rather than built again
+// here, so there is one string: a second copy would drift the moment the
+// first one changed, and both would claim to be what you should run.
+//
+// The dialog opens either way. A refused clipboard is then not a failure
+// path at all — the same command is on screen, selectable by hand, and the
+// line above it says which of the two just happened.
 async function copyUpdateCommand() {
   const command = els.updateDialogCommand.textContent;
-  // Nothing to copy means /api/health has not answered yet. The dialog says
-  // more than this button can anyway.
-  if (!command) return openUpdateDialog();
-  try {
-    await navigator.clipboard.writeText(command);
-  } catch (e) {
-    // Clipboard access can simply be refused. Putting the command on screen
-    // leaves it selectable by hand, which is where this started.
-    return openUpdateDialog();
+  let copied = false;
+  if (command) {
+    try {
+      await navigator.clipboard.writeText(command);
+      copied = true;
+    } catch (e) {
+      // Browsers can refuse the clipboard outright, and do.
+    }
   }
-  els.skillioBannerCopy.textContent = "Copied";
-  els.skillioBannerCopied.hidden = false;
-  els.skillioBannerCopied.textContent = "Command copied — paste it in a terminal.";
-  clearTimeout(copiedTimer);
-  copiedTimer = setTimeout(() => {
-    els.skillioBannerCopy.textContent = "Update";
-    els.skillioBannerCopied.hidden = true;
-    els.skillioBannerCopied.textContent = "";
-  }, 4000);
+  openUpdateDialog(
+    copied
+      ? "Copied to your clipboard — paste it into a terminal and run it."
+      : "Copy the command below and run it in a terminal — your browser did not let Skillio reach the clipboard."
+  );
 }
 
 // The tag says a release exists; this says what to do about it. A dialog
-// rather than the tooltip because these are commands, and a tooltip is gone
+// rather than a tooltip because these are commands, and a tooltip is gone
 // the moment you reach for it — nothing in one can be selected or copied.
-function openUpdateDialog() {
+//
+// `note` is the clipboard line, and is empty when the tag opened this rather
+// than the banner's button: nothing was copied, so nothing should claim it
+// was. Written before showModal, so it is announced with the rest.
+function openUpdateDialog(note = "") {
+  els.updateDialogCopied.textContent = note;
+  els.updateDialogCopied.hidden = !note;
   const url = skillioUpdateKnown && skillioUpdateKnown.url;
   els.updateDialogLink.hidden = !url;
   if (url) els.updateDialogLink.href = url;
@@ -1843,7 +1846,9 @@ document.addEventListener("mousemove", allowTips);
 document.addEventListener("focusin", allowTips);
 els.skillioBannerClose.addEventListener("click", dismissSkillioBanner);
 els.skillioBannerCopy.addEventListener("click", copyUpdateCommand);
-els.skillioUpdate.addEventListener("click", openUpdateDialog);
+// Wrapped, not passed directly: openUpdateDialog takes the clipboard line as
+// its first argument, and a listener would hand it the MouseEvent.
+els.skillioUpdate.addEventListener("click", () => openUpdateDialog());
 els.updateDialogClose.addEventListener("click", () => els.updateDialog.close());
 // The backdrop is a pseudo-element, so a click on it targets the <dialog>.
 els.updateDialog.addEventListener("click", (e) => {
