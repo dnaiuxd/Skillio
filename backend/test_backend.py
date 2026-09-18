@@ -665,6 +665,31 @@ class PortFromEnvironment(unittest.TestCase):
                 self.assertEqual(self._port(bad), "9797")
 
 
+class RepoPathForUpdateSteps(unittest.TestCase):
+    """The update dialog tells you which directory to cd into. It has to be the
+    checkout that answered, not the ~/Skillio the docs name: pulling in the
+    everyday install while running a second checkout is a command that appears
+    to work and updates nothing you are looking at."""
+
+    def test_it_shortens_the_home_directory(self):
+        """A path is easier to recognise as yours written with ~, and a shell
+        expands it, so the line stays copy-pasteable."""
+        with mock.patch.object(app.Path, "home", staticmethod(lambda: Path("/Users/x"))):
+            with mock.patch.object(app, "REPO_ROOT", Path("/Users/x/Skillio")):
+                self.assertEqual(app._repo_display_path(), "~/Skillio")
+
+    def test_a_checkout_outside_home_keeps_its_absolute_path(self):
+        """relative_to raises rather than returning something with .. in it,
+        and an unshortened absolute path is the correct answer anyway."""
+        with mock.patch.object(app.Path, "home", staticmethod(lambda: Path("/Users/x"))):
+            with mock.patch.object(app, "REPO_ROOT", Path("/opt/skillio")):
+                self.assertEqual(app._repo_display_path(), "/opt/skillio")
+
+    def test_health_reports_it(self):
+        with mock.patch.object(app.shutil, "which", return_value=None):
+            self.assertEqual(app.health()["repo_path"], app._repo_display_path())
+
+
 class FrontendRevalidates(unittest.TestCase):
     """An update that the browser never fetches is an update that did not
     happen. Without Cache-Control the browser applies its own heuristic and can

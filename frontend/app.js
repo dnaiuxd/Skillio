@@ -67,6 +67,10 @@ const els = {
   themeBtn: document.getElementById("theme-btn"),
   themeColor: document.querySelector('meta[name="theme-color"]'),
   envTag: document.getElementById("env-tag"),
+  updateDialog: document.getElementById("update-dialog"),
+  updateDialogCommand: document.getElementById("update-dialog-command"),
+  updateDialogLink: document.getElementById("update-dialog-link"),
+  updateDialogClose: document.getElementById("update-dialog-close"),
 };
 
 // --- theme -----------------------------------------------------------------
@@ -570,6 +574,24 @@ function renderEnvTag(port) {
   els.envTag.hidden = false;
 }
 
+// Written when /api/health answers rather than when the dialog opens: the
+// directory is the one part of this that differs per checkout, and health is
+// the single place it gets reported.
+function setUpdateCommand(repoPath) {
+  els.updateDialogCommand.textContent =
+    `cd ${repoPath} && git pull && ./macos/install-service.sh`;
+}
+
+// The tag says a release exists; this says what to do about it. A dialog
+// rather than the tooltip because these are commands, and a tooltip is gone
+// the moment you reach for it — nothing in one can be selected or copied.
+function openUpdateDialog() {
+  const url = skillioUpdateKnown && skillioUpdateKnown.url;
+  els.updateDialogLink.hidden = !url;
+  if (url) els.updateDialogLink.href = url;
+  els.updateDialog.showModal();
+}
+
 // Never rejects and never writes: the repo may be unreachable, the machine
 // offline, GitHub rate-limiting. Callers decide what silence looks like.
 async function fetchSkillioUpdate({ refresh = false } = {}) {
@@ -594,7 +616,16 @@ let skillioUpdateKnown = null;
 function showSkillioTag(d) {
   skillioUpdateKnown = d;
   els.skillioUpdate.textContent = `${versionOf(d.latest)} available`;
-  if (d.url) els.skillioUpdate.href = d.url;
+  // The accessible name has to contain the visible words (WCAG 2.5.3, Label
+  // in Name) and attachTip reads it back out as the tooltip — so one string
+  // does both jobs and the two cannot drift apart.
+  els.skillioUpdate.setAttribute(
+    "aria-label",
+    `${versionOf(d.latest)} available — how to update`
+  );
+  // Re-attached rather than wired once at startup: the assignment above
+  // replaces every child, and the tip is one of them.
+  attachTip(els.skillioUpdate);
   els.skillioUpdate.hidden = !els.skillioBanner.hidden;
 }
 
@@ -678,6 +709,7 @@ async function checkHealth() {
     const data = await res.json();
     showAppVersion(data.skillio_version);
     renderEnvTag(data.port);
+    if (data.repo_path) setUpdateCommand(data.repo_path);
     // Set rather than hardcoded in the markup, so the repository URL lives in
     // exactly one place. Both credit lines exist — the rail on desktop, the
     // footer on narrow — so both are filled. Until this arrives the word is
@@ -1777,6 +1809,12 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("mousemove", allowTips);
 document.addEventListener("focusin", allowTips);
 els.skillioBannerClose.addEventListener("click", dismissSkillioBanner);
+els.skillioUpdate.addEventListener("click", openUpdateDialog);
+els.updateDialogClose.addEventListener("click", () => els.updateDialog.close());
+// The backdrop is a pseudo-element, so a click on it targets the <dialog>.
+els.updateDialog.addEventListener("click", (e) => {
+  if (e.target === els.updateDialog) els.updateDialog.close();
+});
 for (const radio of document.querySelectorAll('input[name="scan-mode"]')) {
   radio.addEventListener("change", onScanModeChange);
 }

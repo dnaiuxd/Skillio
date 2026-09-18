@@ -934,8 +934,21 @@ test("the header tag steps aside while the banner says the same thing", () => {
   dismissSkillioBanner();
   assert.equal(banner.hidden, true);
   assert.equal(tag.hidden, false, "the news vanished with the banner");
-  assert.equal(tag.textContent, "v1.8.0 available");
-  assert.equal(tag.href, "https://example.invalid");
+  // The version reaches the accessible name, which attachTip also prints as
+  // the tooltip. The tag is a button now, so there is no href carrying it.
+  assert.equal(tag.getAttribute("aria-label"), "v1.8.0 available — how to update");
+
+  // ...and the release notes are still one click away, now inside the dialog
+  // beside the command rather than replacing the page you are reading.
+  const dialog = sandbox.document.getElementById("update-dialog");
+  let opened = false;
+  dialog.showModal = () => { opened = true; };
+  tag.fire("click");
+  assert.equal(opened, true, "the tag no longer opens the steps");
+  assert.equal(
+    sandbox.document.getElementById("update-dialog-link").href,
+    "https://example.invalid"
+  );
 });
 
 test("the banner's amber comes from the palette, not from a new colour", () => {
@@ -1013,6 +1026,66 @@ test("the tooltip meets 1.4.13 — focus, dismiss, hover", () => {
   assert.equal(/\n\s*visibility:\s*hidden;/.test(rule[1]), false,
     "back to visibility, which still takes part in layout");
   assert.match(rule[1], /max-width: min\(240px, calc\(100vw - 32px\)\)/);
+});
+
+test("the update tag opens the steps rather than navigating", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  // A link would navigate away from a page whose whole job right now is to
+  // tell you what to type. Anchored to the tag itself, not to any <button>.
+  assert.match(html, /<button[^>]*id="skillio-update"/);
+  assert.equal(/<a[^>]*id="skillio-update"/.test(html), false,
+    "back to a link, which navigates instead of opening the steps");
+  assert.match(appSource, /els\.skillioUpdate\.addEventListener\("click", openUpdateDialog\)/);
+  assert.match(appSource, /els\.updateDialog\.showModal\(\)/);
+});
+
+test("the update steps are copyable and name the checkout that answered", () => {
+  // The command lives in the dialog, NOT the tooltip: a tooltip is gone the
+  // moment the pointer moves toward it, so nothing in one can be copied.
+  assert.match(appSource, /cd \$\{repoPath\} && git pull && \.\/macos\/install-service\.sh/);
+  // From /api/health, never the ~/Skillio the docs name — a second checkout
+  // updating the everyday install is a command that changes nothing visible.
+  assert.match(appSource, /if \(data\.repo_path\) setUpdateCommand\(data\.repo_path\)/);
+  assert.equal(/cd ~\/Skillio/.test(appSource), false,
+    "hardcoded install path — wrong for every second checkout");
+});
+
+test("the update dialog's two buttons are the same size", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  // .info-dialog-close carries a 10px top margin, for a Close standing alone
+  // under the prose. In an actions row the row supplies that spacing already,
+  // and the margin made this button 10px shorter than the link beside it —
+  // the flex row stretches its items, so a margin comes straight off the box.
+  const button = html.match(/<button[^>]*id="update-dialog-close"[^>]*>/)[0];
+  assert.equal(/info-dialog-close/.test(button), false,
+    "the stray margin is back, and the two buttons differ by exactly it");
+  // Anchored to the declaration, not the prose above it.
+  assert.match(css, /\n\.info-dialog-close \{\s*\n\s*margin-top: 10px;/);
+  // A link in that row still arrives underlined and .info-dialog-a coloured.
+  const reset = css.match(/\n\.info-dialog-actions \.btn \{([^}]*)\}/);
+  assert.ok(reset, "no reset for an <a class=btn> in the actions row");
+  assert.match(reset[1], /text-decoration: none/);
+  assert.match(reset[1], /color: var\(--ink\)/);
+  // Not a hardcoded height: the row stretches them, so pinning one would
+  // just be a second number to keep in step with .btn's padding.
+  assert.equal(/height:/.test(reset[1]), false, "height pinned by hand");
+});
+
+test("the update tag's tooltip is dismissible, and stays that way", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const reveal = css.indexOf(".update-tag:hover .info-tip");
+  const dismiss = css.indexOf(":root.tips-off .info-tip");
+  assert.ok(reveal !== -1, "the update tag never reveals its tip");
+  assert.ok(dismiss !== -1, "no .tips-off rule");
+  // Both selectors are (0,2,0), so ONLY source order separates them. Below
+  // the dismiss rule this tip would ignore Esc while the icon tips obeyed it.
+  assert.ok(reveal < dismiss,
+    "the reveal rule sank below .tips-off, so Esc stops dismissing this tip");
+  // The accessible name carries the visible words (WCAG 2.5.3) and is what
+  // attachTip prints, so the tip cannot drift from the label.
+  assert.match(appSource, /\$\{versionOf\(d\.latest\)\} available — how to update/);
+  assert.match(appSource, /attachTip\(els\.skillioUpdate\)/);
 });
 
 test("the tooltip is drawn from tokens, and separates from an ink surface", () => {

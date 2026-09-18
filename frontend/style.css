@@ -260,6 +260,9 @@ button {
   color: var(--link);
   text-decoration: underline;
   text-underline-offset: 2px;
+  /* A <button> since it opens the update steps rather than navigating, and a
+     button does not take the pointer cursor the link it replaced had. */
+  cursor: pointer;
 }
 
 /* Transparent, so the chip stays ~26px while the thing you can click is 44.
@@ -949,6 +952,16 @@ main {
   margin: 18px 0;
 }
 
+/* An <a class="btn"> in that row, which .btn alone does not finish: a link
+   still brings its underline, and `.info-dialog a` still colours it. Beaten
+   at (0,2,0) without reaching .btn:not(:disabled):hover at (0,3,0), so the
+   pair still inverts together. Height is NOT set here — the row stretches its
+   items, so the two match on their own once neither carries a stray margin. */
+.info-dialog-actions .btn {
+  color: var(--ink);
+  text-decoration: none;
+}
+
 /* Secondary prose inside a dialog: the caveat you read before deciding,
    not the pitch. --ink-soft is 6.5:1 on --surface in light and 6.2:1 in
    dark, so it stays AA at this size. */
@@ -1373,6 +1386,14 @@ main {
 
 .info-btn:hover .info-tip,
 .info-btn:focus-visible .info-tip {
+  display: block;
+}
+
+/* The update tag carries one too, and is not an .info-btn. Declared HERE,
+   above .tips-off: both selectors are (0,2,0), so source order is the only
+   thing deciding them, and below it Esc would stop dismissing this one. */
+.update-tag:hover .info-tip,
+.update-tag:focus-visible .info-tip {
   display: block;
 }
 

@@ -568,6 +568,23 @@ def check_skillio_updates(refresh: bool = False) -> dict:
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SERVICE_INSTALLER = REPO_ROOT / "macos" / "install-service.sh"
+
+
+def _repo_display_path() -> str:
+    """Where this instance was installed, with $HOME written as ~.
+
+    The update steps in the UI are built around this rather than the ~/Skillio
+    the docs name, because a second checkout updates itself, not the everyday
+    install — telling someone to pull in a directory they are not running is
+    a command that appears to work and changes nothing. A shell expands the
+    tilde, so the line stays copy-pasteable.
+    """
+    try:
+        return f"~/{REPO_ROOT.relative_to(Path.home())}"
+    except ValueError:
+        # Installed outside the home directory; the absolute path is correct
+        # and there is nothing to shorten.
+        return str(REPO_ROOT)
 # Mirrors the label the installer derives. Duplicated deliberately rather
 # than shelled out for: a status call happens on every page load.
 # SKILLIO_PORT is a string — see _port() — so this compares against one.
@@ -722,6 +739,10 @@ def health() -> dict:
         # SKILLIO_PORT rather than reading window.location.port keeps one
         # source of truth for "what port is this instance on".
         "port": SKILLIO_PORT,
+        # The directory the update steps tell you to cd into. Reported rather
+        # than assumed for the same reason as the port above: two checkouts
+        # update independently.
+        "repo_path": _repo_display_path(),
     }
 
 

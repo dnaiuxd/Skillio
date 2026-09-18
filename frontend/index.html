@@ -57,7 +57,10 @@
         <span class="visually-hidden">Skillio</span>
         <img class="logo logo--light" src="skillio-logo.svg" alt="" />
         <img class="logo logo--dark" src="skillio-logo-dark.svg" alt="" />
-        <a class="update-tag" id="skillio-update" target="_blank" rel="noopener noreferrer" hidden></a>
+        <!-- A button, not a link: it opens the update steps in a dialog now
+             rather than navigating to the release. The release notes are a
+             link inside that dialog, where they can sit beside the command. -->
+        <button type="button" class="update-tag" id="skillio-update" hidden></button>
       </h1>
       <div class="topbar-controls">
         <!-- Says which checkout answered this tab — 9797 is the everyday
@@ -321,6 +324,38 @@
       <p class="info-dialog-note">
         To undo later: <code class="info-dialog-command">./macos/install-service.sh --uninstall</code>
       </p>
+    </div>
+  </dialog>
+
+  <dialog class="info-dialog" id="update-dialog" aria-labelledby="update-dialog-title">
+    <div class="info-dialog-body">
+      <h2 class="info-dialog-title" id="update-dialog-title" tabindex="-1" autofocus>Update Skillio</h2>
+      <p>
+        Skillio never updates itself — you run this yourself, in a terminal.
+        It fetches the new release, brings dependencies up to date and
+        restarts the server. <strong>Your scan log is untouched.</strong>
+      </p>
+      <p><code class="info-dialog-command" id="update-dialog-command"></code></p>
+      <p class="info-dialog-note">
+        The path is the checkout answering this page, which is not always the
+        one the docs name — a second checkout updates itself, not your
+        everyday install.
+      </p>
+      <p class="info-dialog-note">
+        Running Skillio from a Terminal window instead of at login? Then the
+        last command isn't needed: <code>git pull</code>, close the window and
+        reopen <code>Skillio.command</code>.
+      </p>
+      <div class="info-dialog-actions">
+        <a class="btn" id="update-dialog-link" target="_blank" rel="noopener noreferrer">
+          View release notes &#8599;
+        </a>
+        <!-- Plain .btn, like the service dialog's pair: .info-dialog-close
+             carries a 10px top margin for a Close standing alone under the
+             prose, and inside this row it made the two buttons differ by
+             exactly that much. -->
+        <button type="button" class="btn" id="update-dialog-close">Close</button>
+      </div>
     </div>
   </dialog>
 
