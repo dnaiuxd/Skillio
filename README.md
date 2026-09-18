@@ -69,10 +69,9 @@ in, restarts itself if it crashes, and needs no Terminal window. This is the
 one to pick. You never open `Skillio.command` again.
 
 **No** — Skillio runs in that Terminal window and stops when you close it.
-You're only asked once, but you're not stuck with it: **Run at login** at the
-bottom of the left rail opens the same choice inside the app, and taking it
-hands the server over there and then — the page reconnects on its own a
-couple of seconds later, and you can close the Terminal window.
+You're only asked once, but you're not stuck with it: run
+`./macos/install-service.sh` whenever you change your mind, and macOS takes
+it over from then on.
 
 If it can find your Claude Code login, it also offers to switch on the
 semantic analyzers — see [the LLM pass](#the-scanner-one-time) above for what
