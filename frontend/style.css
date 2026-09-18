@@ -2514,8 +2514,25 @@ main {
 
 /* Tablet & below — the scan rail becomes a band on top of the log */
 @media (max-width: 1024px) {
+  /* The page still scrolls here, so the shell cannot own the viewport the way
+     it does on desktop — but the footer was landing wherever the content
+     happened to stop, with the rest of a tall window empty beneath it.
+     Measured at 992x1500: 526px of nothing below the credit line.
+     A column that is at least a screen tall, with the shell taking the slack,
+     puts the footer on the bottom edge when the content is short and leaves it
+     directly after the content when the content is long.
+     dvh second: on a phone 100vh is the tallest the viewport ever gets, URL
+     bar retracted, so the footer sits below the fold until you scroll. */
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
   .app {
     grid-template-columns: 1fr;
+    flex: 1;
   }
 
   .scan-sidebar {

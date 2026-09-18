@@ -1148,6 +1148,28 @@ test("only the log scrolls on desktop, and nothing guesses the topbar's height",
   assert.match(css, /@media \(max-width: 1024px\)/);
 });
 
+test("the footer sits on the bottom edge when the content is short", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  const tablet = css.match(/@media \(max-width: 1024px\) \{([\s\S]*?)\n\}/);
+  assert.ok(tablet, "no tablet query");
+
+  // The page still scrolls in this layout, so the shell cannot own the
+  // viewport the way it does on desktop. Without a column at least a screen
+  // tall, the credit line landed wherever the content stopped — measured at
+  // 992x1500 with 526px of empty window below it.
+  assert.match(tablet[1], /body \{[^}]*flex-direction: column/);
+  assert.match(tablet[1], /body \{[^}]*min-height: 100vh/);
+  assert.match(tablet[1], /\.app \{[^}]*flex: 1/);
+
+  // dvh AFTER vh, or the fallback wins on the browsers that support both and
+  // a phone puts the footer below the fold behind the URL bar.
+  const body = tablet[1].match(/body \{([^}]*)\}/)[1];
+  const vh = body.indexOf("min-height: 100vh");
+  const dvh = body.indexOf("min-height: 100dvh");
+  assert.ok(dvh !== -1, "no dvh unit — 100vh alone is wrong on a phone");
+  assert.ok(vh < dvh, "dvh is declared above vh, so the fallback overrides it");
+});
+
 test("the update dialog's two buttons are the same size", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
   const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
