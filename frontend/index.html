@@ -32,14 +32,17 @@
        revealed before it is written, or a live region announces nothing. -->
   <div class="app-banner" id="skillio-banner" role="status" hidden>
     <div class="app-banner-inner">
-      <!-- An alert triangle. Same stroke weight and the same stem-and-dot as
-           the ⓘ trigger, sat lower so both clear the sloping sides.
+      <!-- An alert triangle, drawn INSIDE the box the circle used rather than
+           across it: a full-width base reads far heavier than a circle of the
+           same 18 units, so this spans about 16 and is centred on the same
+           point. Coordinates rather than a transform — scaling would thin the
+           1.6 stroke the other icons keep.
            Decorative (aria-hidden) — the sentence beside it carries the news. -->
       <svg class="app-banner-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M12 4.2 21.3 20.3H2.7z" stroke="currentColor" stroke-width="1.6"
+        <path d="M12 5.6 19.9 19.3H4.1z" stroke="currentColor" stroke-width="1.6"
           stroke-linejoin="round" />
-        <path d="M12 10.4v3.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-        <circle cx="12" cy="17.2" r="1.05" fill="currentColor" />
+        <path d="M12 11v3.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        <circle cx="12" cy="16.8" r="1" fill="currentColor" />
       </svg>
       <p class="app-banner-text" id="skillio-banner-text"></p>
       <button type="button" class="btn app-banner-btn" id="skillio-banner-copy">Update</button>
