@@ -1262,9 +1262,9 @@ const SCAN_FAILURES = [
     lead: (m) =>
       `The scan passed its ${Math.max(1, Math.round(Number(m[1]) / 60))}-minute limit and was stopped.`,
     hint:
-      "Nothing was saved. A genuinely large repository can need longer than " +
-      "this, but a scan stuck waiting on the network usually never finishes " +
-      "at all, however long it is given.",
+      "Nothing was saved. SkillSpector reads every file, so a whole " +
+      "application repository can run past this even when nothing is " +
+      "wrong. Scanning just the folder that holds the skill is much quicker.",
   },
   {
     // Last of the specific ones: the wording above is more useful wherever it

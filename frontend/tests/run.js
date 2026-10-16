@@ -760,6 +760,14 @@ test("a timeout is reported in minutes, not in seconds", () => {
   assert.match(friendlyError("Scan timed out after 20s").lead, /1-minute/);
 });
 
+test("a timeout doesn't blame the network", () => {
+  // A timed-out strix scan was pure CPU with no sockets open; pointing at
+  // the network sent the diagnosis the wrong way.
+  const { hint } = friendlyError("Scan timed out after 900s");
+  assert.doesNotMatch(hint, /network/i);
+  assert.match(hint, /folder/);
+});
+
 test("an unrecognised failure still says something useful", () => {
   for (const raw of [null, undefined, "", "   ", "Scan failed unexpectedly: KeyError"]) {
     const { lead, hint } = friendlyError(raw);

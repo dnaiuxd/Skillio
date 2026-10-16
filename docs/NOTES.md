@@ -55,10 +55,12 @@ where you'd look for it, and reloading the page or closing the tab doesn't
 lose it — the state lives on the server, not in the tab. A re-scan keeps the
 previous score on show, dimmed, until the new one lands; the old answer is
 still the best one available until then. One scan runs at a time — a second
-request gets a 409 rather than queueing. A skill scan times out after 5
+request gets a 409 rather than queueing. A skill scan times out after 15
 minutes; a registry scan gets 30, because the official registry is hundreds of
-servers read in one pass and measured past 5 minutes on its own, while a
-*skill* still running at 5 minutes is stuck. If the server stops mid-scan,
+servers read in one pass. The skill limit was 5 minutes until a whole
+application repo (usestrix/strix, 545 files) measured 274–304s with the LLM
+off: pure CPU in SkillSpector's static analyzers, not a hang, so it failed on
+some runs and passed on others. If the server stops mid-scan,
 that row is closed out on the next start and says so, instead of spinning
 forever with nothing behind it.
 

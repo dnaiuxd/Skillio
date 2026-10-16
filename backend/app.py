@@ -95,11 +95,14 @@ app.add_middleware(
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
-SCAN_TIMEOUT_SECONDS = 300
+# A whole application repo submitted as a skill is CPU-bound, not stuck:
+# usestrix/strix (545 files) measured 274s and 304s with --no-llm on the bare
+# CLI, so the old 300s limit cut it off on some runs and not others. 900s
+# gives that roughly 3x headroom.
+SCAN_TIMEOUT_SECONDS = 900
 # The official MCP Registry is hundreds of servers read in one pass, so it
 # legitimately runs far longer than any single skill. Measured against the live
-# registry at over five minutes, which the skill limit would have cut off — and
-# a skill that runs that long is stuck, so the two cannot share a number.
+# registry at over five minutes, and it gets twice the skill limit.
 MCP_REGISTRY_TIMEOUT_SECONDS = 1800
 
 

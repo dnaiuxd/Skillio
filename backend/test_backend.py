@@ -415,9 +415,14 @@ class ScanCommand(unittest.TestCase):
         self.assertLess(cmd.index("--mcp-registry"), cmd.index("--"))
         self.assertEqual(cmd[-1], "SOURCE")
 
+    def test_a_whole_repo_fits_inside_the_skill_limit(self):
+        # Measured: usestrix/strix took 274s and 304s on the bare CLI, so
+        # 300s failed it on some runs. Keep real headroom over that.
+        self.assertGreaterEqual(app.SCAN_TIMEOUT_SECONDS, 3 * 300)
+
     def test_a_registry_gets_longer_than_a_skill(self):
-        # Measured: the official registry ran past five minutes, which the
-        # skill limit would have killed. A skill running that long is stuck.
+        # Measured: the official registry ran past five minutes, and it is
+        # hundreds of servers in one pass where a skill is one.
         seen = {}
 
         fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
