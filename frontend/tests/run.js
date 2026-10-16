@@ -139,7 +139,7 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         resetDetailError, requestMessage, vLabel, showSkillioBanner,
         renderSkillioUpdate, dismissSkillioBanner, fetchSkillioUpdate,
         makeUpdateClose, versionOf, attachTip, makeHelpButton,
-        hideTips, allowTips } = sandbox;
+        hideTips, allowTips, renderDetailSource } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice, llmNotice,
@@ -758,6 +758,17 @@ test("a timeout is reported in minutes, not in seconds", () => {
   assert.match(friendlyError("Scan timed out after 600s").lead, /10-minute/);
   // Never "0-minute": a sub-minute limit still reads as a limit.
   assert.match(friendlyError("Scan timed out after 20s").lead, /1-minute/);
+});
+
+test("a source link is exactly the source", () => {
+  // This text gets copied back into the scan box; a trailing "↗" once made
+  // git clone "….git ↗". The arrow is drawn beside the link, not in it.
+  const box = sandbox.document.getElementById("detail-source");
+  renderDetailSource("https://github.com/a/strix.git");
+  assert.equal(box.textContent, "https://github.com/a/strix.git");
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.doesNotMatch(css, /\n\.detail-source a::(?:before|after)/);
+  assert.match(css, /\n\.detail-source:has\(> a\)::after \{[^}]*content: " ↗" \/ "";/);
 });
 
 test("a timeout doesn't blame the network", () => {

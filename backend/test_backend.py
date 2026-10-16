@@ -415,6 +415,21 @@ class ScanCommand(unittest.TestCase):
         self.assertLess(cmd.index("--mcp-registry"), cmd.index("--"))
         self.assertEqual(cmd[-1], "SOURCE")
 
+    def test_a_copied_link_arrow_is_dropped_from_the_source(self):
+        # The detail view's link once carried "↗" as text; a copy of it
+        # pasted back made git try to clone "….git ↗".
+        seen = {}
+
+        def fake_start(source, name, *rest, **kw):
+            seen["source"], seen["name"] = source, name
+            return {}
+
+        with mock.patch.object(app, "_claim_scan_slot", return_value=True), \
+             mock.patch.object(app, "_start_scan", fake_start):
+            app.scan(app.ScanRequest(source="https://github.com/a/strix.git ↗"))
+        self.assertEqual(seen["source"], "https://github.com/a/strix.git")
+        self.assertEqual(seen["name"], "strix")
+
     def test_a_whole_repo_fits_inside_the_skill_limit(self):
         # Measured: usestrix/strix took 274s and 304s on the bare CLI, so
         # 300s failed it on some runs. Keep real headroom over that.

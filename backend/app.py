@@ -737,7 +737,9 @@ def _start_scan(
 @app.post("/api/scan")
 def scan(req: ScanRequest) -> dict:
     # expanduser so "~/Downloads/skill.zip" works; a no-op for URLs.
-    source = os.path.expanduser(req.source.strip())
+    # The detail view used to print "↗" as part of a source link's text, so
+    # a copied address can still carry it, and git can't clone with it on.
+    source = os.path.expanduser(req.source.strip().removesuffix("↗").rstrip())
     if not source:
         raise HTTPException(status_code=400, detail="source is required")
 

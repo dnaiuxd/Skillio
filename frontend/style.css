@@ -1926,6 +1926,15 @@ main {
   text-underline-offset: 2px;
 }
 
+/* The external-link arrow sits beside the link, not inside it: outside the
+   underline and the click target, and as generated content it is never part
+   of a copy, so it can't follow the address back into the scan box. */
+.detail-source:has(> a)::after {
+  content: " ↗";
+  content: " ↗" / "";
+  color: var(--link);
+}
+
 .detail-source a:hover { text-decoration-thickness: 2px; }
 
 .scan-meta {

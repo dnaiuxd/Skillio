@@ -1386,7 +1386,10 @@ function renderDetailSource(src) {
     a.href = src;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
-    a.textContent = `${src} ↗`;
+    // Exactly the source and nothing else: this text gets copied back into
+    // the scan box, and a trailing "↗" once made git clone "….git ↗". CSS
+    // draws the arrow beside the link instead.
+    a.textContent = src;
     els.detailSource.appendChild(a);
   } else {
     els.detailSource.textContent = src;
