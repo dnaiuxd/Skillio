@@ -297,8 +297,13 @@ cat > "$PLIST" <<PLIST_EOF
     <key>KeepAlive</key>
     <true/>
 
+    <!-- Standard, not Background: skillspector runs as a child and inherits
+         this. Background throttles it onto the efficiency cores, and
+         usestrix/strix measured 242s at normal priority vs 608s clamped -
+         long enough that skillspector's own runtime limit cut YARA to 0% of
+         files and Skillio's 900s timeout started firing. -->
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
 
     <key>StandardOutPath</key>
     <string>$LOG</string>
