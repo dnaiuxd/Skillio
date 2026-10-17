@@ -415,7 +415,10 @@ async function checkForUpdates() {
         els.updateResult,
         "Update with",
         notice.command,
-        "Run this in a terminal, then check again. Your scan log isn't touched.",
+        // The second sentence is for the case uv can't reach: NVIDIA tagged
+        // v2.13.0 on a release branch, main still said 2.12.0, and uv
+        // answered "nothing to upgrade" while this card kept offering it.
+        "Run this in a terminal, then check again. If uv says there's nothing to upgrade, this release hasn't reached SkillSpector's main branch yet — try again later. Your scan log isn't touched.",
         "How installing and upgrading SkillSpector works"
       );
     }

@@ -375,6 +375,9 @@
         isolated environment in place. It was installed from git with no
         pinned version, so this takes whatever is on the default branch —
         usually the release named above, occasionally a little ahead of it.
+        Sometimes behind it, too: a release can be tagged before it's merged
+        into the default branch, and until it is, uv reports nothing to
+        upgrade. That's not a fault on your side — check again later.
         The shim path doesn't change, so Skillio keeps finding it.
       </p>
 
