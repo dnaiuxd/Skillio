@@ -17,6 +17,7 @@ import mimetypes
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -73,7 +74,13 @@ async def lifespan(app: FastAPI):
     # A worker thread dies with the process, so any row still marked 'running'
     # is a leftover from a previous life, not a scan anyone is waiting on.
     storage.sweep_running_scans()
+    # Same for the temp dirs those scans were working in: the worker that
+    # would have deleted them died with it.
+    _sweep_stale_temp_dirs()
     yield
+    # A scan runs in its own process group (see _run_killing_group), out of
+    # reach of the Ctrl+C or launchd stop that is ending this process.
+    _stop_live_scans()
 
 
 # Skillio's own version, distinct from the skillspector version reported by
@@ -245,6 +252,54 @@ def _stderr_cause(text: str, limit: int = 500) -> str:
     return "…" + kept[-(limit - 1):]
 
 
+def _run_killing_group(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+    """subprocess.run with capture_output, except a timeout stops everything
+    the command started, not just the command.
+
+    subprocess.run kills only its direct child, so a git clone or worker that
+    skillspector spawned kept burning CPU after the row said "timed out" —
+    and, holding the output pipe open, kept run() itself waiting on it. A new
+    session makes the CLI the leader of its own process group, which is then
+    killed whole. (Anything that calls setsid itself would still escape.)
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    _live_scans.add(proc.pid)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except BaseException:
+        _kill_group(proc.pid)
+        # Reap it. The pipes close now, since nothing is left to hold them.
+        proc.communicate()
+        raise
+    finally:
+        _live_scans.discard(proc.pid)
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+# Group leaders of scans still running, so shutdown can stop them: being in
+# their own group, they no longer get the signal that stops the server.
+_live_scans: set[int] = set()
+
+
+def _kill_group(pgid: int) -> None:
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _stop_live_scans() -> None:
+    # The worker waiting on each one sees it exit and records the failure.
+    for pgid in list(_live_scans):
+        _kill_group(pgid)
+
+
 def _run_scan(
     source: str, use_llm: bool, mcp_registry: bool = False
 ) -> tuple[dict, Optional[str]]:
@@ -291,12 +346,7 @@ def _run_scan(
     )
     try:
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            proc = _run_killing_group(cmd, timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(f"Scan timed out after {timeout}s") from exc
 
@@ -343,6 +393,54 @@ def _run_scan(
         # the scan ended.
         if out_dir:
             shutil.rmtree(out_dir, ignore_errors=True)
+
+
+# Every temp dir this app makes: an upload (skillio_), a registry report
+# (skillio_report_), a second-look clone (skillio_look_), each with mkdtemp's
+# eight-character suffix. Exact, so the test suite's skillio_test_ dirs and
+# anything else that merely starts with "skillio" never match.
+_TEMP_DIR_NAME = re.compile(r"skillio_(?:report_|look_)?[a-z0-9_]{8}")
+# The everyday install and a dev checkout share the system temp dir, so a dir
+# made before this process started may be the other one's live scan. None
+# lives longer than the registry timeout plus its second look; twice that is
+# safely past any of them.
+TEMP_SWEEP_GRACE_SECONDS = 2 * MCP_REGISTRY_TIMEOUT_SECONDS
+_PROCESS_STARTED = time.time()
+
+
+def _sweep_stale_temp_dirs(
+    tmp: Optional[str] = None,
+    now: Optional[float] = None,
+    started: Optional[float] = None,
+) -> int:
+    """Delete temp dirs left by scans that a restart cut short.
+
+    Only the worker deletes an upload's dir, so one that was mid-scan when the
+    server stopped stayed in the temp dir for good. Returns how many went.
+    """
+    tmp = tempfile.gettempdir() if tmp is None else tmp
+    now = time.time() if now is None else now
+    started = _PROCESS_STARTED if started is None else started
+    cutoff = min(started, now - TEMP_SWEEP_GRACE_SECONDS)
+    removed = 0
+    try:
+        entries = list(os.scandir(tmp))
+    except OSError:
+        return 0
+    for entry in entries:
+        if not _TEMP_DIR_NAME.fullmatch(entry.name):
+            continue
+        try:
+            st = entry.stat(follow_symlinks=False)
+            # A real directory of ours — never a symlink pointing elsewhere.
+            if (not entry.is_dir(follow_symlinks=False)
+                    or st.st_uid != os.getuid() or st.st_mtime >= cutoff):
+                continue
+        except OSError:
+            continue
+        shutil.rmtree(entry.path, ignore_errors=True)
+        removed += 1
+    return removed
 
 
 def _finding_key(issue: dict) -> str:
@@ -1025,6 +1123,27 @@ def scan(req: ScanRequest) -> dict:
 
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+# What a multipart form adds around the file: boundaries, part headers and the
+# use_llm field. The header check below allows for it; the stream check in
+# scan_upload is exact.
+_UPLOAD_FORM_SLACK = 64 * 1024
+
+
+# Starlette spools the whole form to disk before scan_upload runs, so the
+# check there only fires after 100 MB+ has already been written. When the
+# request says how big it is, refuse it before reading any of it. A chunked
+# body carries no length and still meets the stream check.
+@app.middleware("http")
+async def refuse_oversized_upload(request: Request, call_next):
+    if request.method == "POST" and request.url.path == "/api/scan/upload":
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_UPLOAD_BYTES + _UPLOAD_FORM_SLACK:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Upload exceeds the 100 MB limit"},
+            )
+    return await call_next(request)
+
 
 
 @app.post("/api/scan/upload")

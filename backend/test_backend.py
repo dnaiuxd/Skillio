@@ -27,7 +27,7 @@ from app import (_derive_name, _extract_score_and_verdict,
 
 
 def _fake_run_writing_report(seen: dict, payload: str):
-    """A stand-in for subprocess.run that behaves like skillspector.
+    """A stand-in for _run_killing_group that behaves like skillspector.
 
     A registry scan is invoked with --output, so the report lands in a file
     rather than on stdout. A fake that always answered on stdout would test a
@@ -341,6 +341,89 @@ class ScanLifecycle(unittest.TestCase):
         self.assertEqual(storage.find_by_source("s")["error"], "the real cause")
 
 
+class StaleTempDirs(unittest.TestCase):
+    """B-21: an upload's temp dir is deleted by the worker, so a restart
+    mid-scan left it behind for good. The next start sweeps what this app
+    made — and nothing else, including a sibling instance's live scan."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.now = 1_000_000_000.0
+
+    def _dir(self, name, age):
+        path = Path(self.tmp) / name
+        path.mkdir()
+        (path / "skill.zip").write_text("x")
+        os.utime(path, (self.now - age, self.now - age))
+        return path
+
+    def _sweep(self):
+        return app._sweep_stale_temp_dirs(self.tmp, now=self.now, started=self.now)
+
+    def test_leftovers_from_every_kind_of_scan_are_removed(self):
+        old = app.TEMP_SWEEP_GRACE_SECONDS + 60
+        made = [self._dir(n, old) for n in
+                ("skillio_ab3_d9kz", "skillio_report_q1w2e3r4", "skillio_look_zz_9a8b7")]
+        self.assertEqual(self._sweep(), 3)
+        for path in made:
+            self.assertFalse(path.exists(), path.name)
+
+    def test_a_dir_young_enough_to_be_a_live_scan_is_kept(self):
+        # 9797 and a dev checkout share the system temp dir: this one may be
+        # the other instance's upload, mid-scan.
+        live = self._dir("skillio_ab3_d9kz", app.TEMP_SWEEP_GRACE_SECONDS - 60)
+        self.assertEqual(self._sweep(), 0)
+        self.assertTrue(live.exists())
+
+    def test_nothing_this_app_did_not_make_is_touched(self):
+        old = app.TEMP_SWEEP_GRACE_SECONDS + 60
+        kept = [self._dir(n, old) for n in
+                ("skillio_test_ab3d9kzq", "skillio", "skillio_toolongname",
+                 "skillio-ab3_d9kz", "other_ab3_d9kz")]
+        file_ = Path(self.tmp) / "skillio_ab3_d9kq"
+        file_.write_text("not a dir")
+        os.utime(file_, (self.now - old, self.now - old))
+        self.assertEqual(self._sweep(), 0)
+        for path in kept + [file_]:
+            self.assertTrue(path.exists(), path.name)
+
+    def test_a_symlink_is_never_followed(self):
+        old = app.TEMP_SWEEP_GRACE_SECONDS + 60
+        target = self._dir("elsewhere", old)
+        link = Path(self.tmp) / "skillio_ab3_d9kz"
+        link.symlink_to(target)
+        self._sweep()
+        self.assertTrue((target / "skill.zip").exists())
+
+    def test_startup_runs_the_sweep(self):
+        import asyncio
+
+        async def start_and_stop():
+            async with app.lifespan(app.app):
+                pass
+
+        with mock.patch.object(app.storage, "init_db"), \
+             mock.patch.object(app.storage, "sweep_running_scans"), \
+             mock.patch.object(app, "_sweep_stale_temp_dirs") as sweep:
+            asyncio.run(start_and_stop())
+        sweep.assert_called_once_with()
+
+    def test_shutdown_stops_running_scans(self):
+        import asyncio
+
+        async def start_and_stop():
+            async with app.lifespan(app.app):
+                pass
+
+        with mock.patch.object(app.storage, "init_db"), \
+             mock.patch.object(app.storage, "sweep_running_scans"), \
+             mock.patch.object(app, "_sweep_stale_temp_dirs"), \
+             mock.patch.object(app, "_stop_live_scans") as stop:
+            asyncio.run(start_and_stop())
+        stop.assert_called_once_with()
+
+
 class FailedRescanKeepsTheLastResult(unittest.TestCase):
     """B-01: a re-scan that fails must not erase the report that is still the
     best answer — the gate may have approved exactly that report."""
@@ -508,6 +591,18 @@ class TrimRegistryReport(unittest.TestCase):
         self.assertEqual(_trim_registry_report(None), None)
 
 
+def _alive(pid: int) -> bool:
+    """True while pid is a live process. A zombie is reaped by launchd within
+    moments of its parent's death, so polling this settles quickly."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 class ScanCommand(unittest.TestCase):
     """What actually reaches the CLI. A skill and an MCP Registry are read
     differently by skillspector, and the flag is the only thing that says
@@ -517,7 +612,7 @@ class ScanCommand(unittest.TestCase):
         seen = {}
         fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", fake_run):
+             mock.patch.object(app, "_run_killing_group", fake_run):
             _run_scan("SOURCE", **kwargs)
         return seen["cmd"]
 
@@ -561,7 +656,7 @@ class ScanCommand(unittest.TestCase):
 
         fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", fake_run):
+             mock.patch.object(app, "_run_killing_group", fake_run):
             _run_scan("SOURCE", use_llm=False)
             _run_scan("SOURCE", use_llm=False, mcp_registry=True)
         skill_timeout, registry_timeout = seen["timeouts"]
@@ -573,6 +668,66 @@ class ScanCommand(unittest.TestCase):
         with_llm = self._cmd(use_llm=True, mcp_registry=True)
         self.assertIn("--mcp-registry", with_llm)
         self.assertNotIn("--no-llm", with_llm)
+
+    def test_a_timeout_stops_what_skillspector_started_too(self):
+        """B-04: killing only the CLI left its git clone or worker running on
+        after the row said "timed out". This stand-in starts a grandchild,
+        records its pid, and waits on it."""
+        import signal
+        import time
+        tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        pidfile = Path(tmp) / "child.pid"
+        fake = Path(tmp) / "skillspector"
+        fake.write_text(
+            "#!/bin/sh\n"
+            f"sleep 30 >/dev/null 2>&1 &\necho $! > '{pidfile}'\nwait\n"
+        )
+        fake.chmod(0o755)
+        with mock.patch.object(app, "_skillspector_path", return_value=str(fake)), \
+             mock.patch.object(app, "SCAN_TIMEOUT_SECONDS", 1):
+            with self.assertRaisesRegex(RuntimeError, r"^Scan timed out after 1s$"):
+                _run_scan("SOURCE", use_llm=False)
+        child = int(pidfile.read_text())
+        self.addCleanup(lambda: os.kill(child, signal.SIGKILL)
+                        if _alive(child) else None)
+        deadline = time.monotonic() + 3
+        while _alive(child) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertFalse(_alive(child), "the grandchild outlived the timeout")
+
+    def test_stopping_the_server_stops_a_running_scan(self):
+        """Its own session takes the CLI out of the server's process group,
+        so Ctrl+C or a launchd stop no longer reaches it. Shutdown has to."""
+        import signal
+        import threading
+        import time
+        seen = {}
+        real_popen = subprocess.Popen
+
+        def popen(*a, **kw):
+            seen["proc"] = real_popen(*a, **kw)
+            return seen["proc"]
+
+        def scan():
+            try:
+                app._run_killing_group(["sleep", "30"], timeout=60)
+            except Exception as exc:  # noqa: BLE001
+                seen["exc"] = exc
+
+        with mock.patch.object(app.subprocess, "Popen", popen):
+            worker = threading.Thread(target=scan)
+            worker.start()
+            deadline = time.monotonic() + 3
+            while "proc" not in seen and time.monotonic() < deadline:
+                time.sleep(0.01)
+            pid = seen["proc"].pid
+            self.addCleanup(lambda: os.kill(pid, signal.SIGKILL)
+                            if _alive(pid) else None)
+            app._stop_live_scans()
+            worker.join(3)
+        self.assertFalse(worker.is_alive(), "the scan was still waiting")
+        self.assertFalse(_alive(pid))
 
 
 class SkillioVersion(unittest.TestCase):
@@ -632,7 +787,7 @@ class GateSurvivesTrimming(unittest.TestCase):
     def _run_with(self, report):
         fake_run = _fake_run_writing_report({}, json.dumps(report))
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", fake_run):
+             mock.patch.object(app, "_run_killing_group", fake_run):
             app._claim_scan_slot()
             storage.begin_scan("REG", "MCP Registry", target_type="mcp_registry")
             app._scan_worker("REG", "MCP Registry", "REG",
@@ -1226,7 +1381,7 @@ class StreamingRegistryReport(unittest.TestCase):
         seen = {}
         fake_run = _fake_run_writing_report(seen, json.dumps(self._registry(3)))
         with mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", fake_run):
+             mock.patch.object(app, "_run_killing_group", fake_run):
             app._run_scan("SRC", use_llm=False, mcp_registry=True)
         out = seen["cmd"][seen["cmd"].index("--output") + 1]
         self.assertFalse(Path(out).exists(), "the report file was left behind")
@@ -1239,7 +1394,7 @@ class StreamingRegistryReport(unittest.TestCase):
         fake_run = _fake_run_writing_report(seen, json.dumps(self._registry(5)))
         with mock.patch.object(app, "ijson", None), \
              mock.patch.object(app.shutil, "which", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", fake_run):
+             mock.patch.object(app, "_run_killing_group", fake_run):
             report, fp = app._run_scan("SRC", use_llm=False, mcp_registry=True)
         self.assertNotIn("--output", seen["cmd"])
         self.assertNotIn("servers", report)
@@ -1690,7 +1845,7 @@ class TriagePastTheRegistryCap(unittest.TestCase):
         seen = {}
         with mock.patch.object(app, "ijson", None), \
              mock.patch.object(app, "_skillspector_path", return_value="/bin/skillspector"), \
-             mock.patch.object(app.subprocess, "run", _fake_run_writing_report(seen, payload)):
+             mock.patch.object(app, "_run_killing_group", _fake_run_writing_report(seen, payload)):
             report, _ = _run_scan("https://registry.modelcontextprotocol.io/v0/servers",
                                   False, mcp_registry=True)
         self.assertEqual(report["skillio_triage"]["must_review"], 1)
@@ -1974,6 +2129,28 @@ class SecondLookTriage(unittest.TestCase):
             app._scan_worker("s", "n", "t", False)
         self.assertIsNone(stored["error"])
 
+
+
+class UploadSizeCap(unittest.TestCase):
+    """B-16: the 100 MB cap used to be checked only after Starlette had
+    spooled the whole body to disk. A declared Content-Length over it is
+    refused before a byte of the body is read."""
+
+    def _post(self, length):
+        return _asgi("POST", "/api/scan/upload",
+                     [("X-Skillio", "1"), ("Content-Length", str(length)),
+                      ("Content-Type", "multipart/form-data; boundary=x")])
+
+    def test_an_oversized_upload_is_refused_up_front(self):
+        self.assertEqual(self._post(app.MAX_UPLOAD_BYTES * 2), 413)
+
+    def test_a_zip_right_at_the_limit_is_not_refused_for_its_form_wrapping(self):
+        # The multipart boundaries and the use_llm field ride on top of the
+        # file, so the header check allows for them; the stream check is exact.
+        self.assertNotEqual(self._post(app.MAX_UPLOAD_BYTES + 1024), 413)
+
+    def test_a_junk_length_is_left_to_the_server(self):
+        self.assertNotEqual(self._post("lots"), 413)
 
 
 def _asgi(method, path, headers=(), host="localhost:9797"):

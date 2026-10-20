@@ -64,10 +64,31 @@ some runs and passed on others. If the server stops mid-scan,
 that row is closed out on the next start and says so, instead of spinning
 forever with nothing behind it.
 
+**A timeout stops everything the scan started.** SkillSpector clones a link
+with `git`, which runs its own helpers (`git remote-https`, observed on a live
+scan). Killing only the CLI left those running after the row said "timed
+out" — and, holding the output pipe open, kept Skillio waiting on them too.
+The CLI now runs as the leader of its own process group, and a timeout kills
+the group. Being in its own group also puts it out of reach of the Ctrl+C or
+launchd stop that ends the server, so shutdown kills any scan still running.
+
 **Uploads are streamed to a temp file, scanned, and deleted** — only the
 report is kept, and they're identified by a hash of their contents, so two
 unrelated files both named `skill.zip` stay separate rows instead of
 overwriting each other.
+
+**An upload over 100 MB is refused before it is read**, when the request
+says how big it is: the framework writes the whole form to disk before the
+route sees it, so a check in the route alone came after the cost. A body sent
+without a length still meets the same limit as it streams.
+
+**A restart sweeps the temp dirs its scans left behind.** Only the scan
+deletes an upload's dir, so a server stopped mid-scan stranded it. On start,
+dirs named exactly as Skillio makes them (`skillio_`, `skillio_report_`,
+`skillio_look_` plus mkdtemp's eight characters) are removed — but only once
+they are two registry timeouts old, because the everyday install and a dev
+checkout share the system temp dir and a younger one may be the other's live
+scan. So a leftover goes on the first restart after it is an hour old.
 
 ## Reading the results
 
