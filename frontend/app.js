@@ -42,6 +42,10 @@ const els = {
   skillioBannerClose: document.getElementById("skillio-banner-close"),
   findingsList: document.getElementById("findings-list"),
   severityBreakdown: document.getElementById("severity-breakdown"),
+  triage: document.getElementById("triage"),
+  triageCounts: document.getElementById("triage-counts"),
+  triageInfoBtn: document.getElementById("triage-info-btn"),
+  triageInfo: document.getElementById("triage-info"),
   filesPanel: document.getElementById("files-panel"),
   filesPanelCount: document.getElementById("files-panel-count"),
   filesPanelList: document.getElementById("files-panel-list"),
@@ -320,6 +324,31 @@ function fmtDate(ts) {
   if (!ts) return "—";
   const d = new Date(ts * 1000);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// "4m 02s": seconds padded once there are minutes, so a column of them lines
+// up in the mono face. Hours drop the seconds, which stop mattering there.
+function fmtDuration(seconds) {
+  const total = Math.round(seconds);
+  if (total < 1) return "<1s";
+  if (total < 60) return `${total}s`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+// The second line under "Last scanned". Nothing while a scan runs — the old
+// time would read as this one's — and a dash for rows from before durations
+// were recorded, spelled out for screen readers since a dash alone says
+// nothing.
+function durationLine(s) {
+  if (isScanning(s)) return "";
+  if (typeof s.scan_seconds !== "number") {
+    return `<span class="scan-duration"><span aria-hidden="true">—</span><span class="visually-hidden">duration not recorded</span></span>`;
+  }
+  return `<span class="scan-duration">took ${fmtDuration(s.scan_seconds)}</span>`;
 }
 
 // What the result line should say, kept apart from the DOM so it can be
@@ -904,7 +933,7 @@ function renderSkillList(skills) {
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
       <td>${verdictCell}</td>
-      <td>${fmtDate(s.last_scanned)}</td>
+      <td>${fmtDate(s.last_scanned)}${durationLine(s)}</td>
       <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(gateStatusLabel(s.status))}</span></td>
     `;
 
@@ -961,19 +990,36 @@ function updateGateControls(archived, status) {
 // count of files *looked at*, not a verdict — how completely they were read
 // is the coverage notice's job, and what was found in them is the findings
 // list's. Conflating the three is what made "11 files" read as "11 findings".
+//
+// When the read was incomplete the chip says so in the same terms as the
+// coverage notice. "537 files scanned" above "only fully read 204 of its 537
+// files" read as two answers to one question.
+function filesChip(ac) {
+  const total = ac && ac.total_components;
+  if (typeof total !== "number" || total <= 0) return null;
+  const full = ac.fully_inspected_files;
+  if (typeof full === "number" && full < total) {
+    return { text: `${full} of ${total} files fully read`, partial: true };
+  }
+  return { text: `${total} ${total === 1 ? "file" : "files"} scanned`, partial: false };
+}
+
 function renderScanMeta(skill) {
   const meta = (skill.report && skill.report.metadata) || {};
   const ac = (skill.report && skill.report.analysis_completeness) || null;
   const chips = [];
 
-  const total = ac && ac.total_components;
-  if (typeof total === "number" && total > 0) {
-    chips.push(`${total} ${total === 1 ? "file" : "files"} scanned`);
+  const files = filesChip(ac);
+  if (files) chips.push(files);
+  if (meta.llm_requested && meta.llm_available) {
+    chips.push({ text: "Review using LLM", partial: false });
   }
-  if (meta.llm_requested && meta.llm_available) chips.push("Review using LLM");
 
   els.scanMeta.innerHTML = chips
-    .map((c) => `<span class="scan-meta-chip">${escapeHtml(c)}</span>`)
+    .map((c) => {
+      const cls = c.partial ? "scan-meta-chip scan-meta-chip--partial" : "scan-meta-chip";
+      return `<span class="${cls}">${escapeHtml(c.text)}</span>`;
+    })
     .join("");
   els.scanMeta.hidden = chips.length === 0;
 }
@@ -1796,11 +1842,42 @@ function truncationNotice(report, shown) {
   );
 }
 
+// "2 must review · 11 notes" — Skillio's sorting, counted by the backend so a
+// registry report counts past the 1,000 findings it keeps. null when the
+// report carries no count (a failed scan, or a backend from before the rule),
+// and the summary is hidden.
+function triageSummary(counts) {
+  if (!counts || typeof counts.must_review !== "number") return null;
+  const notes = counts.notes || 0;
+  return {
+    must: counts.must_review,
+    mustText: `${counts.must_review.toLocaleString()} must review`,
+    notesText:
+      `${notes.toLocaleString()} ${notes === 1 ? "note" : "notes"}` +
+      (counts.partial ? ", counted over the findings shown" : ""),
+  };
+}
+
+function renderTriage(report) {
+  const t = triageSummary(report && report.skillio_triage);
+  els.triage.hidden = !t;
+  if (!t) return;
+  els.triageCounts.innerHTML =
+    `<strong class="triage-must${t.must ? " triage-must--some" : ""}">${escapeHtml(t.mustText)}</strong>` +
+    ` · ${escapeHtml(t.notesText)}`;
+}
+
+// Must review first, then by severity within each group.
+function triageRank(f) {
+  return f.skillio_triage === "must_review" ? 0 : 1;
+}
+
 function renderFindings(report) {
   els.findingsList.innerHTML = "";
   const raw = report && (report.findings || report.results || report.issues);
   const findings = dedupeFindings(raw || []);
 
+  renderTriage(report);
   renderSeverityBreakdown(findings);
 
   const truncated = truncationNotice(report, findings.length);
@@ -1823,19 +1900,24 @@ function renderFindings(report) {
   }
 
   const sorted = [...findings].sort(
-    (a, b) => severityRank(a.severity) - severityRank(b.severity)
+    (a, b) =>
+      triageRank(a) - triageRank(b) ||
+      severityRank(a.severity) - severityRank(b.severity)
   );
 
   for (const f of sorted) {
+    const must = f.skillio_triage === "must_review";
     const div = document.createElement("div");
     div.className = "finding";
     div.innerHTML = `
       <div class="finding-top">
         <span class="finding-rule">${escapeHtml(findingTitle(f))}</span>
         <span class="finding-location">${escapeHtml(findingLocations(f))}</span>
+        ${must ? `<span class="triage-tag">Must review</span>` : ""}
         <span class="pill ${findingPillClass(f.severity)}">${escapeHtml((f.severity || "").toLowerCase())}</span>
       </div>
       <div class="finding-message">${escapeHtml(findingMessage(f))}</div>
+      ${f.skillio_triage_reason ? `<div class="finding-triage-reason">${escapeHtml(f.skillio_triage_reason)}</div>` : ""}
       ${f.remediation ? `<div class="finding-remediation">Fix: ${escapeHtml(f.remediation)}</div>` : ""}
     `;
     els.findingsList.appendChild(div);
@@ -1981,6 +2063,12 @@ els.aboutClose.addEventListener("click", () => els.aboutDialog.close());
 els.aboutDialog.addEventListener("click", (e) => {
   if (e.target === els.aboutDialog) els.aboutDialog.close();
 });
+els.triageInfoBtn.addEventListener("click", () => {
+  const opening = els.triageInfo.hidden;
+  els.triageInfo.hidden = !opening;
+  els.triageInfoBtn.setAttribute("aria-expanded", String(opening));
+});
+
 els.llmInfoBtn.addEventListener("click", () => {
   const opening = els.llmInfo.hidden;
   els.llmInfo.hidden = !opening;

@@ -281,6 +281,40 @@ class ScanLifecycle(unittest.TestCase):
                             report=None, error="skillspector not found")
         self.assertIsNone(storage.begin_scan("s", "n")["error"])
 
+    def test_a_finished_scan_records_how_long_it_took(self):
+        storage.begin_scan("s", "n")
+        row = storage.upsert_scan(source="s", name="n", score=1, verdict="SAFE",
+                                  report={}, duration=242.5)
+        self.assertEqual(row["scan_seconds"], 242.5)
+
+    def test_a_rescan_clears_the_old_duration_while_it_runs(self):
+        # The previous time belongs to the previous scan; showing it beside a
+        # scan that is still running would read as this one's.
+        storage.upsert_scan(source="s", name="n", score=1, verdict="SAFE",
+                            report={}, duration=608.0)
+        self.assertIsNone(storage.begin_scan("s", "n")["scan_seconds"])
+
+    def test_rows_from_before_timing_have_no_duration(self):
+        self.assertIsNone(self._finish()["scan_seconds"])
+
+    def test_the_worker_times_a_scan_that_succeeds(self):
+        storage.begin_scan("s", "n")
+        with mock.patch.object(app, "_run_scan", return_value=({}, "fp")), \
+             mock.patch.object(app.time, "monotonic", side_effect=[100.0, 342.0]):
+            app._claim_scan_slot()
+            app._scan_worker("s", "n", "s", use_llm=False)
+        self.assertEqual(storage.find_by_source("s")["scan_seconds"], 242.0)
+
+    def test_the_worker_times_a_scan_that_fails(self):
+        # A timed-out scan is exactly the one whose time you want to see.
+        storage.begin_scan("s", "n")
+        with mock.patch.object(app, "_run_scan",
+                               side_effect=RuntimeError("Scan timed out after 900s")), \
+             mock.patch.object(app.time, "monotonic", side_effect=[0.0, 900.4]):
+            app._claim_scan_slot()
+            app._scan_worker("s", "n", "s", use_llm=False)
+        self.assertEqual(storage.find_by_source("s")["scan_seconds"], 900.4)
+
     def test_the_sweep_closes_a_scan_orphaned_by_a_restart(self):
         storage.begin_scan("s", "n")
         self.assertEqual(storage.sweep_running_scans(), 1)
@@ -415,6 +449,11 @@ class ScanCommand(unittest.TestCase):
         self.assertLess(cmd.index("--mcp-registry"), cmd.index("--"))
         self.assertEqual(cmd[-1], "SOURCE")
 
+    def test_a_whole_repo_fits_inside_the_skill_limit(self):
+        # Measured: usestrix/strix took 274s and 304s on the bare CLI, so
+        # 300s failed it on some runs. Keep real headroom over that.
+        self.assertGreaterEqual(app.SCAN_TIMEOUT_SECONDS, 3 * 300)
+
     def test_a_copied_link_arrow_is_dropped_from_the_source(self):
         # The detail view's link once carried "↗" as text; a copy of it
         # pasted back made git try to clone "….git ↗".
@@ -429,11 +468,6 @@ class ScanCommand(unittest.TestCase):
             app.scan(app.ScanRequest(source="https://github.com/a/strix.git ↗"))
         self.assertEqual(seen["source"], "https://github.com/a/strix.git")
         self.assertEqual(seen["name"], "strix")
-
-    def test_a_whole_repo_fits_inside_the_skill_limit(self):
-        # Measured: usestrix/strix took 274s and 304s on the bare CLI, so
-        # 300s failed it on some runs. Keep real headroom over that.
-        self.assertGreaterEqual(app.SCAN_TIMEOUT_SECONDS, 3 * 300)
 
     def test_a_registry_gets_longer_than_a_skill(self):
         # Measured: the official registry ran past five minutes, and it is
@@ -618,6 +652,19 @@ class VersionCache(unittest.TestCase):
                 "SkillSpector v2.11.2",
             )
         self.assertEqual(len(calls), 2, "the failure was cached instead of retried")
+
+    def test_colour_codes_are_stripped_from_the_version(self):
+        # Seen live: launched from a different shell, the CLI coloured its
+        # version and "SkillSpector v2.\x1b[1;36m12.0\x1b[0m" parsed as nothing.
+        class Coloured:
+            returncode = 0
+            stdout = "SkillSpector v2.\x1b[1;36m12.0\x1b[0m\n"
+            stderr = ""
+
+        with mock.patch.object(app.subprocess, "run", return_value=Coloured()):
+            version = app._skillspector_version("/bin/skillspector", refresh=True)
+        self.assertEqual(version, "SkillSpector v2.12.0")
+        self.assertEqual(_parse_version(version), (2, 12, 0))
 
     def test_a_successful_read_is_only_taken_once(self):
         calls = []
@@ -1397,6 +1444,172 @@ class LoginItemName(unittest.TestCase):
         """The installer writes no paths into it, so it has to orient itself
         the way install-service.sh does."""
         self.assertIn('dirname "${BASH_SOURCE[0]}"', self.LAUNCHER.read_text())
+
+
+def _issue(fid, category, severity, rule="X1", file="SKILL.md", line=3, **extra):
+    loc = {"file": file, "start_line": line, "end_line": None}
+    return {"id": rule, "finding_id": fid, "category": category,
+            "severity": severity, "location": loc, "occurrences": [loc], **extra}
+
+
+def _bom(fid, file, snippet="﻿<?xml version=\"1.0\"?>\n<a/>"):
+    return _issue(fid, "Prompt Injection", "HIGH", rule="P2", file=file, line=1,
+                  pattern="Hidden Instructions", finding="﻿",
+                  code_snippet=snippet)
+
+
+class Triage(unittest.TestCase):
+    """Must review or note. Skillio's rule, sitting beside SkillSpector's band
+    and never replacing it — the labels here are the entire point of it."""
+
+    def _label(self, *issues):
+        report = app._apply_triage({"issues": list(issues)})
+        return [(i["skillio_triage"], i.get("skillio_triage_reason")) for i in report["issues"]], report["skillio_triage"]
+
+    def test_severe_kinds_must_be_reviewed(self):
+        labels, counts = self._label(
+            _issue("a", "Prompt Injection", "HIGH"),
+            _issue("b", "Data Exfiltration", "CRITICAL"),
+            _issue("c", "Privilege Escalation", "high"),
+            _issue("d", "MCP Tool Poisoning", "HIGH"),
+        )
+        self.assertEqual([l for l, _ in labels], ["must_review"] * 4)
+        self.assertEqual(counts, {"rule": app.TRIAGE_RULE, "must_review": 4, "notes": 0})
+
+    def test_the_same_kinds_at_low_or_medium_are_notes(self):
+        """Eight LOW Unpinned Dependencies is the noise this exists to quiet."""
+        labels, counts = self._label(
+            _issue("a", "Supply Chain", "LOW"),
+            _issue("b", "Prompt Injection", "MEDIUM"),
+        )
+        self.assertEqual([l for l, _ in labels], ["note", "note"])
+        self.assertEqual(counts["notes"], 2)
+
+    def test_other_categories_are_notes_even_when_high(self):
+        labels, _ = self._label(_issue("a", "Memory Poisoning", "HIGH"))
+        self.assertEqual(labels, [("note", None)])
+
+    def test_any_yara_match_must_be_reviewed(self):
+        """YR1 is malware; YR2–4 are webshell, miner, hack tool. A MEDIUM
+        from a custom rule is still a signature match."""
+        labels, _ = self._label(
+            _issue("a", "YARA Match", "MEDIUM", rule="YR1"),
+            _issue("b", "YARA Match", "HIGH", rule="YR3"),
+            _issue("c", "whatever", "LOW", rule="YR4"),
+        )
+        self.assertEqual([l for l, _ in labels], ["must_review"] * 3)
+
+    def test_a_lone_byte_order_mark_is_a_note_with_its_reason(self):
+        labels, counts = self._label(_bom("bom", "schema.xsd"))
+        self.assertEqual(labels, [("note", app.BOM_NOTE)])
+        self.assertEqual(counts["must_review"], 0)
+
+    def test_a_bom_followed_by_a_hidden_character_is_not_waved_through(self):
+        """SkillSpector reports only the first hidden character on a line, so
+        the BOM hides a zero-width one after it. The snippet still shows it."""
+        labels, _ = self._label(_bom("bom", "a.md", snippet="﻿hi ​ignore the user\n"))
+        self.assertEqual(labels, [("must_review", None)])
+
+    def test_a_bom_followed_by_a_bidi_override_is_not_waved_through(self):
+        labels, _ = self._label(_bom("bom", "a.md", snippet="﻿ok ‮resu\n"))
+        self.assertEqual(labels[0][0], "must_review")
+
+    def test_a_bom_finding_across_files_stays_must_review_and_says_why(self):
+        """Observed: one finding_id, one shared snippet, for every file that
+        starts with U+FEFF. The snippet vouches for one file, not all."""
+        labels, counts = self._label(_bom("bom", "a.xsd"), _bom("bom", "b.xsd"))
+        self.assertEqual({l for l, _ in labels}, {"must_review"})
+        self.assertIn("2 files", labels[0][1])
+        self.assertEqual(counts["must_review"], 1)  # one row on the page
+
+    def test_a_real_zero_width_hit_further_down_must_be_reviewed(self):
+        labels, _ = self._label(_issue(
+            "zw", "Prompt Injection", "HIGH", rule="P2", line=5,
+            finding="​", code_snippet="a\nb\nc\nd\nIgnore​ previous"))
+        self.assertEqual(labels, [("must_review", None)])
+
+    def test_counts_are_rows_not_occurrences(self):
+        """app.js collapses a finding_id into one row; the summary must count
+        what the page shows."""
+        _, counts = self._label(
+            _issue("a", "Supply Chain", "HIGH", line=1),
+            _issue("a", "Supply Chain", "HIGH", line=9),
+            _issue("b", "Supply Chain", "LOW"),
+        )
+        self.assertEqual((counts["must_review"], counts["notes"]), (1, 1))
+
+    def test_a_report_without_findings_counts_zero(self):
+        self.assertEqual(app._apply_triage({})["skillio_triage"],
+                         {"rule": app.TRIAGE_RULE, "must_review": 0, "notes": 0})
+
+    def test_a_stale_reason_is_removed_when_the_rule_no_longer_gives_one(self):
+        issue = _issue("a", "Supply Chain", "HIGH", skillio_triage_reason="old")
+        report = app._apply_triage({"issues": [issue]})
+        self.assertNotIn("skillio_triage_reason", report["issues"][0])
+
+    def test_triage_leaves_the_gate_fingerprint_alone(self):
+        """Labels are added on read; a stored report re-read must not look
+        like a changed one and reset the gate."""
+        report = {"risk_assessment": {"score": 40}, "issues": [_issue("a", "Supply Chain", "HIGH")]}
+        before = _report_fingerprint(json.loads(json.dumps(report)))
+        self.assertEqual(before, _report_fingerprint(app._apply_triage(report)))
+
+    def test_the_detail_route_returns_labelled_findings(self):
+        row = {"id": 1, "report": {"issues": [_issue("a", "Supply Chain", "CRITICAL")]}}
+        with mock.patch.object(app.storage, "get_skill", return_value=row):
+            skill = app.get_skill(1)
+        self.assertEqual(skill["report"]["issues"][0]["skillio_triage"], "must_review")
+        self.assertEqual(skill["report"]["skillio_triage"]["must_review"], 1)
+
+
+class TriagePastTheRegistryCap(unittest.TestCase):
+    """A registry report keeps 1,000 findings. A must-review finding at
+    98,000 still has to be counted, or the summary says nothing to review."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _stream(self):
+        findings = [{"id": f"F{i}", "category": "Supply Chain", "severity": "low"}
+                    for i in range(app.MCP_MAX_FINDINGS + 10)]
+        findings.append({"id": "TAIL", "category": "MCP Tool Poisoning", "severity": "critical"})
+        path = Path(self.tmp) / "report.json"
+        path.write_text(json.dumps({"risk_score": 90, "findings": findings}))
+        report, _ = app._stream_registry_report(str(path))
+        return report
+
+    def test_the_stored_count_covers_every_finding(self):
+        report = self._stream()
+        self.assertEqual(report["skillio_triage"]["must_review"], 1)
+        self.assertNotIn("TAIL", [f["id"] for f in report["findings"]])
+
+    def test_reading_it_back_keeps_the_full_count(self):
+        report = app._apply_triage(json.loads(json.dumps(self._stream())))
+        self.assertEqual(report["skillio_triage"]["must_review"], 1)
+        self.assertNotIn("partial", report["skillio_triage"])
+
+    def test_a_count_from_an_older_rule_is_recounted_and_marked_partial(self):
+        report = json.loads(json.dumps(self._stream()))
+        report["skillio_triage"]["rule"] = app.TRIAGE_RULE - 1
+        counts = app._apply_triage(report)["skillio_triage"]
+        self.assertTrue(counts["partial"])
+        self.assertEqual(counts["must_review"], 0)  # the kept 1,000 are all LOW
+
+    def test_the_no_ijson_fallback_counts_before_trimming(self):
+        findings = [{"id": f"F{i}", "severity": "low"} for i in range(app.MCP_MAX_FINDINGS + 5)]
+        findings.append({"id": "TAIL", "category": "Prompt Injection", "severity": "HIGH"})
+        payload = json.dumps({"risk_score": 90, "findings": findings})
+        seen = {}
+        with mock.patch.object(app, "ijson", None), \
+             mock.patch.object(app, "_skillspector_path", return_value="/bin/skillspector"), \
+             mock.patch.object(app.subprocess, "run", _fake_run_writing_report(seen, payload)):
+            report, _ = _run_scan("https://registry.modelcontextprotocol.io/v0/servers",
+                                  False, mcp_registry=True)
+        self.assertEqual(report["skillio_triage"]["must_review"], 1)
+        self.assertEqual(len(report["findings"]), app.MCP_MAX_FINDINGS)
 
 
 if __name__ == "__main__":

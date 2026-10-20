@@ -272,6 +272,30 @@
         <div id="detail-error" class="detail-error" hidden></div>
 
         <div id="findings-wrap">
+          <div id="triage" class="triage" hidden>
+            <p class="triage-summary">
+              <span id="triage-counts"></span>
+              <button type="button" class="info-btn" id="triage-info-btn" aria-expanded="false"
+                aria-controls="triage-info" aria-label="How does Skillio decide what to review?">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M12 11.25v4.75" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                  <circle cx="12" cy="7.9" r="1.05" fill="currentColor" />
+                </svg>
+              </button>
+            </p>
+            <div class="llm-info triage-info" id="triage-info" hidden>
+              <p><strong>Must review</strong> — a HIGH or CRITICAL finding of
+                prompt injection, supply chain, data exfiltration, privilege
+                escalation or MCP tool poisoning, or any YARA signature match
+                (malware, webshell, crypto miner, hack tool).</p>
+              <p><strong>Notes</strong> — everything else. Still listed and worth
+                a look, but rarely a reason on its own not to install.</p>
+              <p>This sorting is Skillio's, not SkillSpector's. The score and
+                verdict above are the report's own, and a clean sort is not a
+                clean skill: nothing here was run.</p>
+            </div>
+          </div>
           <figure id="severity-breakdown" class="severity-breakdown" hidden></figure>
           <div id="findings-list" class="findings-list"></div>
           <details class="files-panel" id="files-panel" hidden>

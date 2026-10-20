@@ -21,6 +21,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 from contextlib import asynccontextmanager
@@ -156,6 +157,7 @@ def _stream_registry_report(path: str) -> tuple[dict, Optional[str]]:
     """
     kept: list = []
     keys: list = []
+    triage = _Triage()
     total = 0
     with open(path, "rb") as fh:
         for finding in ijson.items(fh, "findings.item", use_float=True):
@@ -164,6 +166,7 @@ def _stream_registry_report(path: str) -> tuple[dict, Optional[str]]:
                 kept.append(finding)
             if isinstance(finding, dict):
                 keys.append(_finding_key(finding))
+                triage.add(finding)
 
     # A second pass for the headline values. Cheap: ijson walks the file
     # without building anything, and only top-level scalars are captured —
@@ -179,6 +182,7 @@ def _stream_registry_report(path: str) -> tuple[dict, Optional[str]]:
     report["findings"] = kept
     if total > len(kept):
         report["findings_total"] = total
+    report["skillio_triage"] = triage.counts()
 
     score, verdict = _extract_score_and_verdict(report)
     return report, _fingerprint_of(score, verdict, keys)
@@ -289,7 +293,10 @@ def _run_scan(
                 # The no-ijson fallback: the whole report came down the pipe,
                 # so trim it here — and fingerprint BEFORE trimming, since the
                 # trim is precisely what loses the findings the gate needs.
-                return _trim_registry_report(report), _report_fingerprint(report)
+                counts = _apply_triage(report)["skillio_triage"]
+                trimmed = _trim_registry_report(report)
+                trimmed["skillio_triage"] = counts
+                return trimmed, _report_fingerprint(report)
             return report, None
         except json.JSONDecodeError as exc:
             raise RuntimeError(
@@ -387,6 +394,198 @@ def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[st
     return score, verdict
 
 
+# --- must review, or a note ---------------------------------------------------
+# Skillio's own rule, not SkillSpector's: the band and the verdict stay the
+# report's. A raw scan flags almost everything — hundreds of findings on a
+# well-kept repo — and a list where everything weighs the same is a list you
+# stop reading. This picks out the few that answer "could this take over my
+# agent, poison what it installs, or steal from me?" and leaves the rest as
+# notes, still listed.
+#
+# Deliberately wider than "prompt injection or supply chain": an info-stealer
+# that posts your keys with curl is Data Exfiltration, and a webshell or miner
+# is YR2/YR3, not YR1. A rule that misses those passes the thing it exists for.
+TRIAGE_RULE = 1
+TRIAGE_CATEGORIES = frozenset({
+    "prompt injection",
+    "supply chain",
+    "data exfiltration",
+    "privilege escalation",
+    "mcp tool poisoning",
+    "mcp rug pull",
+})
+TRIAGE_SEVERITIES = frozenset({"high", "critical"})
+
+BOM_NOTE = (
+    "A byte-order mark: an invisible character some editors put at the very "
+    "start of a file. It isn't an instruction."
+)
+BOM_SHARED = (
+    "Probably byte-order marks, but SkillSpector reports {n} files under one "
+    "snippet and only the first hidden character on each line, so Skillio "
+    "can't confirm line 1 of every file is clean. Open them to check."
+)
+
+
+def _rule_id(issue: dict) -> str:
+    return str(issue.get("id") or issue.get("rule_id") or "")
+
+
+def _group_key(issue: dict) -> str:
+    """The row a finding is shown in — the same key dedupeFindings uses in
+    app.js, so a count here is a count of rows there."""
+    return str(
+        issue.get("finding_id")
+        or issue.get("id")
+        or f"{issue.get('category') or ''}|"
+        f"{issue.get('pattern') or issue.get('message') or ''}"
+    )
+
+
+def _severe_kind(issue: dict) -> bool:
+    """Must review, before the byte-order-mark exception."""
+    if _rule_id(issue).upper().startswith("YR"):
+        return True
+    category = str(issue.get("category") or "").strip().lower()
+    if category == "yara match":
+        return True
+    severity = str(issue.get("severity") or "").strip().lower()
+    return category in TRIAGE_CATEGORIES and severity in TRIAGE_SEVERITIES
+
+
+def _bom_candidate(issue: dict) -> bool:
+    """A Hidden Instructions hit whose match is U+FEFF on line 1.
+
+    SkillSpector counts U+FEFF among its zero-width characters, so a file
+    saved with a byte-order mark reads as a hidden instruction — every .xsd in
+    Anthropic's skills repo does. Only a candidate: whether it is *only* a BOM
+    depends on the rest of line 1, which _bom_only decides.
+    """
+    if _rule_id(issue) != "P2" or issue.get("finding") != "﻿":
+        return False
+    spots = issue.get("occurrences") or [issue.get("location")]
+    return bool(spots) and all(
+        isinstance(s, dict) and s.get("start_line") == 1 for s in spots
+    )
+
+
+def _bom_only(issue: dict) -> bool:
+    """Line 1 starts with U+FEFF and hides nothing after it.
+
+    SkillSpector reports the FIRST hidden character on a line and no more, so
+    a BOM masks a zero-width instruction placed later on the same line — the
+    snippet is the only place it still shows. Any format character (Cf: zero
+    width, bidi overrides, Unicode tags) past the first one fails this.
+    """
+    snippet = issue.get("code_snippet")
+    if not isinstance(snippet, str) or not snippet.startswith("﻿"):
+        return False
+    first_line = snippet.split("\n", 1)[0]
+    return not any(unicodedata.category(ch) == "Cf" for ch in first_line[1:])
+
+
+class _Triage:
+    """Sorts findings into rows, one label per row, fed one at a time.
+
+    Streaming because a registry report is ~98,000 findings read off disk:
+    the counts must cover every one of them, not the 1,000 kept for display,
+    or a must-review finding past the cap would vanish from the summary.
+    """
+
+    def __init__(self) -> None:
+        self._severe: dict[str, bool] = {}
+        # Per row: the files its BOM candidates hit, and whether every one of
+        # them came with a clean line 1. None once the row isn't a candidate.
+        self._bom: dict[str, Optional[tuple[set, bool]]] = {}
+
+    def add(self, issue: dict) -> None:
+        key = _group_key(issue)
+        self._severe[key] = self._severe.get(key, False) or _severe_kind(issue)
+        if key in self._bom and self._bom[key] is None:
+            return
+        if not _bom_candidate(issue):
+            self._bom[key] = None
+            return
+        files, clean = self._bom.get(key) or (set(), True)
+        loc = issue.get("location") if isinstance(issue.get("location"), dict) else {}
+        files.add(str(loc.get("file") or ""))
+        self._bom[key] = (files, clean and _bom_only(issue))
+
+    def label(self, key: str) -> tuple[str, Optional[str]]:
+        if not self._severe.get(key):
+            return "note", None
+        bom = self._bom.get(key)
+        if bom is None:
+            return "must_review", None
+        files, clean = bom
+        # One file: its own snippet was checked. Several: the snippet belongs
+        # to whichever file SkillSpector picked, and says nothing of the rest.
+        if len(files) == 1 and clean:
+            return "note", BOM_NOTE
+        if len(files) > 1:
+            return "must_review", BOM_SHARED.format(n=len(files))
+        return "must_review", None
+
+    def counts(self) -> dict:
+        labels = [self.label(k)[0] for k in self._severe]
+        return {
+            "rule": TRIAGE_RULE,
+            "must_review": labels.count("must_review"),
+            "notes": labels.count("note"),
+        }
+
+
+def _issues_of(report: dict) -> list:
+    issues = report.get("issues") or report.get("findings") or report.get("results") or []
+    return [i for i in issues if isinstance(i, dict)] if isinstance(issues, list) else []
+
+
+def _apply_triage(report: Optional[dict]) -> Optional[dict]:
+    """Label every stored finding and put the counts on the report.
+
+    Applied on read, so a stored report from before this rule — or before a
+    change to it — is labelled by the current one without a migration. The
+    one thing reading can't redo is a registry report's count past the
+    1,000-finding cap; that is taken at scan time and kept, and used as long
+    as the rule it was counted under is still this one.
+    """
+    if not isinstance(report, dict):
+        return report
+    issues = _issues_of(report)
+    triage = _Triage()
+    for issue in issues:
+        triage.add(issue)
+    for issue in issues:
+        label, reason = triage.label(_group_key(issue))
+        issue["skillio_triage"] = label
+        if reason:
+            issue["skillio_triage_reason"] = reason
+        else:
+            issue.pop("skillio_triage_reason", None)
+
+    stored = report.get("skillio_triage")
+    counts = triage.counts()
+    if report.get("findings_total"):
+        if isinstance(stored, dict) and stored.get("rule") == TRIAGE_RULE:
+            counts = stored
+        else:
+            # Counted over the kept findings only; say so rather than pass a
+            # partial count off as the whole.
+            counts["partial"] = True
+    report["skillio_triage"] = counts
+    return report
+
+
+def _triaged(skill: dict) -> dict:
+    """A detail row as the page gets it: the report carries its labels."""
+    _apply_triage(skill.get("report"))
+    return skill
+
+
+# Terminal colour codes. The CLI colours its output when it thinks it has a
+# terminal, and "v2.\x1b[1;36m12.0" doesn't parse as a version.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
 # `skillspector --version` spins up the whole CLI (~5s); its output never
 # changes for a given binary, so look it up once per path and cache it.
 _version_cache: dict[str, Optional[str]] = {}
@@ -399,7 +598,7 @@ def _skillspector_version(binary: str, refresh: bool = False) -> Optional[str]:
         proc = subprocess.run(
             [binary, "--version"], capture_output=True, text=True, timeout=15
         )
-        version = proc.stdout.strip() or None
+        version = _ANSI_RE.sub("", proc.stdout).strip() or None
     except Exception:
         version = None
     # Only a SUCCESSFUL read is a stable fact about this binary. Caching the
@@ -618,7 +817,7 @@ def get_skill(skill_id: int) -> dict:
     skill = storage.get_skill(skill_id)
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
+    return _triaged(skill)
 
 
 # --- running a scan without blocking the request -----------------------------
@@ -679,6 +878,11 @@ def _scan_worker(
     mcp_registry: bool = False,
 ) -> None:
     """Run one scan and write the result onto its row. Never raises."""
+    # Monotonic, so a clock change mid-scan can't produce a negative time.
+    # Recorded on failure too: a scan that hit the time limit is exactly the
+    # one whose duration answers "is it still slow?".
+    started = time.monotonic()
+    elapsed = lambda: round(time.monotonic() - started, 1)  # noqa: E731
     try:
         try:
             report, fingerprint = _run_scan(target, use_llm, mcp_registry)
@@ -694,7 +898,7 @@ def _scan_worker(
         except RuntimeError as exc:
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,
-                report=None, error=str(exc),
+                report=None, error=str(exc), duration=elapsed(),
             )
             return
         score, verdict = _extract_score_and_verdict(report)
@@ -702,11 +906,13 @@ def _scan_worker(
             source=source, name=name, score=score, verdict=verdict,
             report=report, error=None, fingerprint=fingerprint,
             target_type="mcp_registry" if mcp_registry else "skill",
+            duration=elapsed(),
         )
     except Exception as exc:  # noqa: BLE001 - the row must never stay 'running'
         storage.upsert_scan(
             source=source, name=name, score=None, verdict=None,
             report=None, error=f"Scan failed unexpectedly: {exc}",
+            duration=elapsed(),
         )
     finally:
         if cleanup_dir:
@@ -809,7 +1015,7 @@ def set_status(skill_id: int, req: StatusRequest) -> dict:
     skill = storage.set_status(skill_id, req.status)
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
+    return _triaged(skill)
 
 
 @app.post("/api/skills/{skill_id}/archive")
@@ -817,7 +1023,7 @@ def archive_skill(skill_id: int, req: ArchiveRequest) -> dict:
     skill = storage.set_archived(skill_id, req.archived)
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
-    return skill
+    return _triaged(skill)
 
 
 @app.delete("/api/skills/{skill_id}")

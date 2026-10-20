@@ -37,3 +37,10 @@ node_modules/
 
 # Project instructions for Claude Code — kept local, not published
 CLAUDE.md
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
+
+# Backlog — kept local until the security items are fixed
+docs/BACKLOG.md

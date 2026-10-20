@@ -1784,6 +1784,14 @@ main {
 
 .score-badge--pending { color: var(--pending); }
 
+.scan-duration {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
 .score-severity {
   display: block;
   font-family: var(--mono);
@@ -1962,6 +1970,13 @@ main {
   height: 6px;
   border-radius: 50%;
   background: var(--ok);
+}
+
+/* An incomplete read. The text says so; the dot only agrees with it rather
+   than showing the all-clear green beside a shortfall. Scoped to beat the
+   rule above on specificity, not on source order. */
+.scan-meta-chip.scan-meta-chip--partial::before {
+  background: var(--medium);
 }
 
 .detail-source a:focus-visible {
@@ -2258,6 +2273,59 @@ main {
   margin: 0 0 16px;
 }
 
+/* ---------- Must review vs. notes ---------- */
+
+/* Skillio's sorting of the findings, above the chart that counts them. The
+   words carry it; colour only repeats them. --critical as text: 5.94:1 on
+   --bg and 5.61:1 on --surface in light, 5.65:1 / 5.16:1 in dark — AA
+   (1.4.3) on every ground it can land on. */
+.triage {
+  margin: 16px 0 0;
+}
+
+.triage-summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--ink-soft);
+}
+
+.triage-must {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.triage-must--some {
+  color: var(--critical);
+}
+
+/* (0,2,0), to beat .llm-info's rail-tuned -6px pull-up at equal footing. */
+.llm-info.triage-info {
+  margin: 8px 0 0;
+}
+
+/* Outlined, not filled: it sits beside the severity pill, which for a HIGH
+   is already solid --critical, and two solid red chips read as one blob.
+   The border is the same --critical, clearing 1.4.11's 3:1 easily. */
+.triage-tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border: 1px solid var(--critical);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--critical);
+}
+
+.finding-triage-reason {
+  margin: 4px 0;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
 /* ---------- Findings by severity (bar chart) ---------- */
 
 .severity-breakdown {
@@ -2515,9 +2583,17 @@ main {
     display: none;
   }
 
+  /* The scroller is the whole column, so its bar sits on the window's edge
+     rather than beside the 1160px content. The content keeps that width by
+     padding instead of max-width: the padding grows with the column and
+     never drops below the base 36px. Percentages in padding are of the grid
+     cell's width, which is what the old max-width was measured against. */
   main {
     height: 100%;
     overflow-y: auto;
+    max-width: none;
+    margin: 0;
+    padding-inline: max(36px, calc((100% - 1160px) / 2 + 36px));
   }
 }
 

@@ -83,6 +83,27 @@ is downgraded to CAUTION whenever the scan was degraded or incomplete. That's
 why a skill can score 0 and still say Caution — the detail page says so
 explicitly rather than leaving it looking like a contradiction.
 
+**Must review vs. notes is Skillio's sorting, not SkillSpector's.** A raw scan
+flags almost everything, so each finding gets one of two labels. *Must review*
+means HIGH/CRITICAL prompt injection, supply chain, data exfiltration,
+privilege escalation or MCP tool poisoning / rug pull, or any YARA match
+(YR1–YR4). Everything else is a *note*. That's wider than "injection, supply
+chain, YR1" on purpose: an info-stealer that posts your keys with `curl`
+shows up as Data Exfiltration. Labels are applied when a report is read, so
+old reports get the current rule. A registry report's counts are taken at scan
+time over every finding, not just the 1,000 kept. The band and the gate are
+untouched.
+
+**A byte-order mark counts as a note only when Skillio can prove it.**
+SkillSpector counts U+FEFF as a zero-width character, so a file that starts
+with a BOM is flagged as Hidden Instructions. But it reports only the *first*
+hidden character on each line, so a BOM hides a zero-width instruction placed
+after it on line 1. It also merges every BOM hit across files into one finding
+with one shared snippet (both observed on v2.11.2). So a BOM becomes a note
+only when the finding covers one file and that file's snippet shows nothing
+else hidden on line 1. Across several files it stays *must review* and says
+why. "Skip a BOM at the start of a file", applied blindly, is a bypass.
+
 **Three separate things are reported separately**, because conflating them is
 confusing: the **N files scanned** chip is scope (what was looked at), the
 amber notice is completeness (how fully it was read), and the findings list is

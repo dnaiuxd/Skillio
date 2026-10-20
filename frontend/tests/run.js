@@ -139,7 +139,8 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         resetDetailError, requestMessage, vLabel, showSkillioBanner,
         renderSkillioUpdate, dismissSkillioBanner, fetchSkillioUpdate,
         makeUpdateClose, versionOf, attachTip, makeHelpButton,
-        hideTips, allowTips, renderDetailSource } = sandbox;
+        hideTips, allowTips, triageSummary, triageRank, renderDetailSource,
+        fmtDuration, durationLine, filesChip } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice, llmNotice,
@@ -149,6 +150,7 @@ for (const [name, fn] of Object.entries({
   truncationNotice, friendlyError, renderScanError, resetDetailError,
   requestMessage, vLabel, showSkillioBanner, renderSkillioUpdate,
   dismissSkillioBanner, fetchSkillioUpdate, makeUpdateClose,
+  triageSummary, triageRank, fmtDuration, durationLine, filesChip,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -1609,9 +1611,105 @@ test("the container keeps pre-wrap, which coverageNotice depends on", () => {
   assert.match(rule.slice(0, rule.indexOf("}")), /white-space:\s*pre-wrap/);
 });
 
+// --- must review vs. notes -------------------------------------------------
+test("the triage summary counts both groups", () => {
+  const t = triageSummary({ rule: 1, must_review: 2, notes: 11 });
+  assert.equal(t.mustText, "2 must review");
+  assert.equal(t.notesText, "11 notes");
+  assert.equal(t.must, 2);
+});
+
+test("one note is singular, and zero must-review still says so", () => {
+  // "0 must review" is the answer people look for; hiding it would leave
+  // them wondering whether the rule ran at all.
+  const t = triageSummary({ rule: 1, must_review: 0, notes: 1 });
+  assert.equal(t.mustText, "0 must review");
+  assert.equal(t.notesText, "1 note");
+});
+
+test("a partial count says it covers only the findings shown", () => {
+  const t = triageSummary({ rule: 1, must_review: 0, notes: 1000, partial: true });
+  assert.match(t.notesText, /counted over the findings shown$/);
+});
+
+test("no count means no summary, rather than a made-up zero", () => {
+  assert.equal(triageSummary(undefined), null);
+  assert.equal(triageSummary({}), null);
+});
+
+test("must-review findings sort ahead of notes", () => {
+  assert.ok(triageRank({ skillio_triage: "must_review" }) < triageRank({ skillio_triage: "note" }));
+  assert.equal(triageRank({}), triageRank({ skillio_triage: "note" }));
+});
+
+test("the tag is words, not only colour", () => {
+  assert.match(appSource, /<span class="triage-tag">Must review<\/span>/);
+});
+
+test("the triage colour rule is declared, not just mentioned", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.match(css, /^\.triage-must--some \{\n  color: var\(--critical\);\n\}/m);
+});
+
+// --- scan duration ----------------------------------------------------------
+// Under the date in the log, so a slow scan shows up without opening it.
+test("durations read as minutes and seconds", () => {
+  assert.equal(fmtDuration(42.4), "42s");
+  assert.equal(fmtDuration(0.3), "<1s");
+  assert.equal(fmtDuration(242), "4m 02s");
+  assert.equal(fmtDuration(900.4), "15m 00s");
+  assert.equal(fmtDuration(3725), "1h 02m");
+});
+
+test("a finished scan says how long it took", () => {
+  const html = durationLine({ scan_state: "done", scan_seconds: 242 });
+  assert.match(html, /class="scan-duration"/);
+  assert.match(html, /took 4m 02s/);
+});
+
+test("a scan from before timing shows a dash a screen reader can explain", () => {
+  const html = durationLine({ scan_state: "done", scan_seconds: null });
+  assert.match(html, /—/);
+  assert.match(html, /class="visually-hidden">duration not recorded/);
+});
+
+test("a running scan shows no duration rather than the last one", () => {
+  assert.equal(durationLine({ scan_state: "running", scan_seconds: null }), "");
+});
+
+test("the duration line is styled as secondary text", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.match(css, /^\.scan-duration \{\n  display: block;\n  font-family: var\(--mono\);\n  font-size: var\(--text-xs\);\n  color: var\(--ink-soft\);/m);
+});
+
+// --- files chip -------------------------------------------------------------
+test("an incomplete read says how many files were fully read", () => {
+  const c = filesChip({ total_components: 537, fully_inspected_files: 204 });
+  assert.equal(c.text, "204 of 537 files fully read");
+  assert.equal(c.partial, true);
+});
+
+test("a complete read keeps the plain count", () => {
+  const c = filesChip({ total_components: 11, fully_inspected_files: 11 });
+  assert.equal(c.text, "11 files scanned");
+  assert.equal(c.partial, false);
+  assert.equal(filesChip({ total_components: 1 }).text, "1 file scanned");
+});
+
+test("no completeness data means no files chip", () => {
+  assert.equal(filesChip(null), null);
+  assert.equal(filesChip({ total_components: 0 }), null);
+});
+
+test("the partial chip's dot is declared, not just mentioned", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.match(css, /^\.scan-meta-chip\.scan-meta-chip--partial::before \{\n  background: var\(--medium\);\n\}/m);
+});
+
 // --- report ----------------------------------------------------------------
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
 }
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 process.exit(failures.length ? 1 : 0);
