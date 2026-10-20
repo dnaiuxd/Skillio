@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
+import second_look
 import storage
 
 # StaticFiles infers Content-Type from this map; .webmanifest isn't registered
@@ -405,11 +406,18 @@ def _extract_score_and_verdict(report: dict) -> tuple[Optional[int], Optional[st
 # Deliberately wider than "prompt injection or supply chain": an info-stealer
 # that posts your keys with curl is Data Exfiltration, and a webshell or miner
 # is YR2/YR3, not YR1. A rule that misses those passes the thing it exists for.
-TRIAGE_RULE = 1
+#
+# Rule 2 adds Data Flow — a credential traced to a network call, the clearest
+# leak signal SkillSpector has, which rule 1 left as a note — and lets
+# Skillio's second look (second_look.py) move a data-leaving alarm back to the
+# notes when it can say, confidently, that the data stays on this computer or
+# is only a setting. Can't tell stays here.
+TRIAGE_RULE = 2
 TRIAGE_CATEGORIES = frozenset({
     "prompt injection",
     "supply chain",
     "data exfiltration",
+    "data flow",
     "privilege escalation",
     "mcp tool poisoning",
     "mcp rug pull",
@@ -420,6 +428,7 @@ BOM_NOTE = (
     "A byte-order mark: an invisible character some editors put at the very "
     "start of a file. It isn't an instruction."
 )
+LOWERED_NOTE = "Moved to notes by Skillio's second look."
 BOM_SHARED = (
     "Probably byte-order marks, but SkillSpector reports {n} files under one "
     "snippet and only the first hidden character on each line, so Skillio "
@@ -494,6 +503,9 @@ class _Triage:
 
     def __init__(self) -> None:
         self._severe: dict[str, bool] = {}
+        # Per row: did the second look lower EVERY finding in it? One it
+        # couldn't check keeps the whole row in must review.
+        self._lowered: dict[str, bool] = {}
         # Per row: the files its BOM candidates hit, and whether every one of
         # them came with a clean line 1. None once the row isn't a candidate.
         self._bom: dict[str, Optional[tuple[set, bool]]] = {}
@@ -501,6 +513,9 @@ class _Triage:
     def add(self, issue: dict) -> None:
         key = _group_key(issue)
         self._severe[key] = self._severe.get(key, False) or _severe_kind(issue)
+        look = issue.get("skillio_second_look")
+        lowered = isinstance(look, dict) and look.get("lower") is True
+        self._lowered[key] = self._lowered.get(key, True) and lowered
         if key in self._bom and self._bom[key] is None:
             return
         if not _bom_candidate(issue):
@@ -514,6 +529,8 @@ class _Triage:
     def label(self, key: str) -> tuple[str, Optional[str]]:
         if not self._severe.get(key):
             return "note", None
+        if self._lowered.get(key):
+            return "note", LOWERED_NOTE
         bom = self._bom.get(key)
         if bom is None:
             return "must_review", None
@@ -895,6 +912,15 @@ def _scan_worker(
             # they go past; a skill report is small, so it is derived here.
             if fingerprint is None:
                 fingerprint = _report_fingerprint(report)
+            # While the files still exist: an upload is deleted in the
+            # finally below, and SkillSpector has already deleted its own
+            # copy of a link. Not for the registry — 98,000 findings and no
+            # files to read.
+            if not mcp_registry:
+                try:
+                    second_look.annotate(_issues_of(report), target)
+                except Exception:  # noqa: BLE001 - a scan never fails on this
+                    pass
         except RuntimeError as exc:
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,

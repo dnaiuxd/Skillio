@@ -86,7 +86,7 @@ explicitly rather than leaving it looking like a contradiction.
 **Must review vs. notes is Skillio's sorting, not SkillSpector's.** A raw scan
 flags almost everything, so each finding gets one of two labels. *Must review*
 means HIGH/CRITICAL prompt injection, supply chain, data exfiltration,
-privilege escalation or MCP tool poisoning / rug pull, or any YARA match
+data flow, privilege escalation or MCP tool poisoning / rug pull, or any YARA match
 (YR1–YR4). Everything else is a *note*. That's wider than "injection, supply
 chain, YR1" on purpose: an info-stealer that posts your keys with `curl`
 shows up as Data Exfiltration. Labels are applied when a report is read, so
@@ -103,6 +103,35 @@ with one shared snippet (both observed on v2.11.2). So a BOM becomes a note
 only when the finding covers one file and that file's snippet shows nothing
 else hidden on line 1. Across several files it stays *must review* and says
 why. "Skip a BOM at the start of a file", applied blindly, is a bypass.
+
+**A "data is leaving" alarm gets a second look** (`backend/second_look.py`).
+SkillSpector's strix alarm, Critical "credential exfiltration", was a proxy
+helper reading an address setting that defaults to 127.0.0.1. For every Data
+Flow and Data Exfiltration finding, Skillio reads the flagged lines and
+answers *Takes / Sends to / When* in plain words, above SkillSpector's own
+alarm, which stays. Python is read with `ast` (parsed, never run), following
+calls and constants within the file; other languages get a line-level read
+and say "can't tell" more often. Only two confident answers move an alarm to
+the notes: *your own computer* (a loopback address, no secret taken) or
+*just a setting* (a name that is plainly not a key). Anything it can't tell
+stays must review, a row moves only if every finding in it was lowered, and
+non-Python is never lowered.
+
+It runs inside the scan, because the files are gone afterwards: an upload is
+deleted when the scan ends, and SkillSpector deletes its own clone of a link.
+For a GitHub link Skillio fetches just the flagged files itself (shallow,
+blob-less, nothing checked out), and SkillSpector doesn't record which
+commit it scanned, so **every copy is checked against the snippet
+SkillSpector reported** before it is read. A mismatch, or two different files
+with the same name, gives "Couldn't check this one" rather than a card about
+different code. SkillSpector shortens long lines and lowercases some text in
+snippets, so a snippet line only has to start the file's line, ignoring case.
+Other link hosts, and the registry, get no look.
+
+When AI review was on, SkillSpector's verdict (`llm_review_outcome`) is shown
+as one line and never acted on: a skill can be written to talk an AI out of
+an alarm. Tested 2026-10-19: it disagreed with the strix alarm at 0.9 and
+SkillSpector still kept it Critical.
 
 **Three separate things are reported separately**, because conflating them is
 confusing: the **N files scanned** chip is scope (what was looked at), the

@@ -54,7 +54,6 @@ const el = (id) => {
     dataset: {},
     files: [],
     hidden: false,
-    innerHTML: "",
     value: "",
   };
   // Assigning className replaces the whole class list, which is how the
@@ -68,10 +67,21 @@ const el = (id) => {
   });
   // Assigning textContent empties a node in a real DOM, which is exactly how
   // the failure box is cleared before it is rebuilt.
+  // And it sets innerHTML to the escaped text, as a real one does — which is
+  // the whole of how escapeHtml works, so without it every escape is "".
   let text = "";
+  let html = "";
   Object.defineProperty(node, "textContent", {
     get: () => (node.children.length ? node.children.map((c) => c.textContent).join("") : text),
-    set(v) { text = String(v); node.children.length = 0; },
+    set(v) {
+      text = String(v);
+      node.children.length = 0;
+      html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    },
+  });
+  Object.defineProperty(node, "innerHTML", {
+    get: () => html,
+    set(v) { html = String(v); },
   });
   return node;
 };
@@ -140,7 +150,8 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         renderSkillioUpdate, dismissSkillioBanner, fetchSkillioUpdate,
         makeUpdateClose, versionOf, attachTip, makeHelpButton,
         hideTips, allowTips, triageSummary, triageRank, renderDetailSource,
-        fmtDuration, durationLine, filesChip } = sandbox;
+        fmtDuration, durationLine, filesChip, secondLookHtml, aiReviewLine,
+        codeSpans } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice, llmNotice,
@@ -151,6 +162,7 @@ for (const [name, fn] of Object.entries({
   requestMessage, vLabel, showSkillioBanner, renderSkillioUpdate,
   dismissSkillioBanner, fetchSkillioUpdate, makeUpdateClose,
   triageSummary, triageRank, fmtDuration, durationLine, filesChip,
+  secondLookHtml, aiReviewLine, codeSpans,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -1707,6 +1719,73 @@ test("the partial chip's dot is declared, not just mentioned", () => {
 });
 
 // --- report ----------------------------------------------------------------
+// --- second look -------------------------------------------------------------
+const CAIDO_LOOK = {
+  v: 1, kind: "local", lower: true,
+  headline: "Probably harmless: talks to a program on your own computer",
+  takes: "a setting called `STRIX_CAIDO_URL`. It's an address, not a password or key.",
+  sends_to: "`127.0.0.1:48080` by default, which means your own computer.",
+  when: "when `_login_as_guest()` is called.",
+  worth_knowing: "if someone changed that setting (`STRIX_CAIDO_URL`), it could point somewhere else.",
+};
+
+test("the second look answers the three questions in a list", () => {
+  const html = secondLookHtml({ skillio_second_look: CAIDO_LOOK });
+  assert.match(html, /<p class="second-look-headline">Probably harmless: talks to a program on your own computer<\/p>/);
+  for (const k of ["Takes", "Sends to", "When", "Worth knowing"]) {
+    assert.ok(html.includes(`<dt>${k}</dt>`), k);
+  }
+  assert.ok(html.includes("<code>STRIX_CAIDO_URL</code>"));
+  assert.ok(html.includes("second-look--lowered"));
+});
+
+test("a look that didn't lower keeps the serious edge", () => {
+  const html = secondLookHtml({ skillio_second_look: { ...CAIDO_LOOK, lower: false } });
+  assert.ok(!html.includes("second-look--lowered"));
+  // "yes" is not true: a stored report is data.
+  assert.ok(!secondLookHtml({ skillio_second_look: { ...CAIDO_LOOK, lower: "yes" } })
+    .includes("second-look--lowered"));
+});
+
+test("couldn't check shows its reason instead of the questions", () => {
+  const html = secondLookHtml({ skillio_second_look: {
+    kind: "unchecked", lower: false, headline: "Couldn't check this one",
+    detail: "Skillio couldn't get a copy of this file to read.",
+  } });
+  assert.ok(html.includes("Couldn't check this one"));
+  assert.ok(html.includes('class="second-look-detail"'));
+  assert.ok(!html.includes("<dl"));
+});
+
+test("no look, no card", () => {
+  assert.equal(secondLookHtml({}), "");
+  assert.equal(secondLookHtml({ skillio_second_look: "x" }), "");
+});
+
+test("code spans are escaped before they are wrapped", () => {
+  assert.equal(codeSpans("a `<b>` c"), "a <code>&lt;b&gt;</code> c");
+  assert.ok(!secondLookHtml({ skillio_second_look: { ...CAIDO_LOOK, headline: "<img src=x>" } })
+    .includes("<img"));
+});
+
+test("the AI review is reported, and only for outcomes it knows", () => {
+  assert.match(aiReviewLine({ evidence: { llm_review_outcome: "disagreed" } }), /disagreed with this alarm/);
+  assert.match(aiReviewLine({ evidence: { llm_review_outcome: "agreed" } }), /agreed with this alarm/);
+  assert.equal(aiReviewLine({ evidence: { llm_review_outcome: "weird" } }), null);
+  assert.equal(aiReviewLine({}), null);
+});
+
+test("SkillSpector's alarm stays under the card", () => {
+  const body = appSource.slice(appSource.indexOf("function renderFindings"));
+  assert.ok(body.indexOf("${look}") < body.indexOf('class="finding-message"'));
+});
+
+test("the second-look edge colours are declared, not just mentioned", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.match(css, /^\.second-look \{\n(?:  .*\n)*?  border-left: 3px solid var\(--critical\);/m);
+  assert.match(css, /^\.second-look\.second-look--lowered \{\n  border-left-color: var\(--ok\);\n\}/m);
+});
+
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
 }

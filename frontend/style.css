@@ -2535,6 +2535,95 @@ main {
   color: var(--ink-soft);
 }
 
+/* SkillSpector's own words, under Skillio's card. Same size as the message
+   it introduces; the label only says whose alarm it is. */
+.finding-source {
+  font-weight: 600;
+}
+
+.finding-ai {
+  margin: 4px 0;
+  font-size: var(--text-sm);
+  color: var(--ink-soft);
+}
+
+/* Skillio's second look. The .llm-info panel's surface and border, at the
+   12px radius the nested panels use. The left edge repeats the verdict in
+   status colour — --ok only when the look lowered the alarm, --critical for
+   everything else, can't-tell included — but the headline's words carry it
+   on their own (1.4.1). Measured on --surface: --ok 5.81:1 light,
+   6.81:1 dark; --critical 5.61:1 light, 5.16:1 dark; --ink-soft 6.95:1 and
+   5.62:1 — all past 1.4.11's 3:1, and past 4.5:1 for the label text. */
+.second-look {
+  margin: 8px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--critical);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.second-look.second-look--lowered {
+  border-left-color: var(--ok);
+}
+
+.second-look p {
+  margin: 0;
+}
+
+.second-look-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.second-look-headline {
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.second-look-detail {
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+
+/* Label and answer side by side; stacked on a phone, where a fixed label
+   column would leave the answers a sliver. */
+.second-look-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+}
+
+.second-look-facts dt {
+  font-weight: 600;
+}
+
+.second-look-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.second-look code {
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 640px) {
+  .second-look-facts {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .second-look-facts dd + dt {
+    margin-top: 6px;
+  }
+}
+
 .no-findings {
   padding: 20px 0;
   color: var(--ink-soft);

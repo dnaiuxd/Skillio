@@ -1867,6 +1867,54 @@ function renderTriage(report) {
     ` · ${escapeHtml(t.notesText)}`;
 }
 
+// Backticks in the backend's wording mark code: `STRIX_CAIDO_URL`. Escape
+// first, then wrap — never the other way round, or a name could carry markup.
+function codeSpans(text) {
+  return escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+// SkillSpector's AI review, when it ran, records whether it agreed with an
+// alarm. Shown as information only: a skill can be written to talk an AI out
+// of an alarm, so it never moves anything — Skillio's own look does that.
+function aiReviewLine(f) {
+  const outcome = String(((f && f.evidence) || {}).llm_review_outcome || "").toLowerCase();
+  if (outcome === "disagreed") {
+    return "SkillSpector's AI review disagreed with this alarm. Shown for reference; it doesn't move the alarm.";
+  }
+  if (outcome === "agreed" || outcome === "confirmed") {
+    return "SkillSpector's AI review agreed with this alarm.";
+  }
+  return null;
+}
+
+// Skillio's second look at a data-leaving alarm: three plain answers, or an
+// honest "couldn't check". The original alarm stays underneath it.
+function secondLookHtml(f) {
+  const look = f && f.skillio_second_look;
+  if (!look || typeof look !== "object" || !look.headline) return "";
+  const lowered = look.lower === true;
+  const rows = [
+    ["Takes", look.takes],
+    ["Sends to", look.sends_to],
+    ["When", look.when],
+    ["Worth knowing", look.worth_knowing],
+  ].filter(([, v]) => v);
+  const body = rows.length
+    ? `<dl class="second-look-facts">${rows
+        .map(([k, v]) => `<dt>${k}</dt><dd>${codeSpans(v)}</dd>`)
+        .join("")}</dl>`
+    : look.detail
+      ? `<p class="second-look-detail">${codeSpans(look.detail)}</p>`
+      : "";
+  return (
+    `<div class="second-look${lowered ? " second-look--lowered" : ""}">` +
+    `<p class="second-look-label">Skillio's second look</p>` +
+    `<p class="second-look-headline">${codeSpans(look.headline)}</p>` +
+    body +
+    `</div>`
+  );
+}
+
 // Must review first, then by severity within each group.
 function triageRank(f) {
   return f.skillio_triage === "must_review" ? 0 : 1;
@@ -1907,6 +1955,8 @@ function renderFindings(report) {
 
   for (const f of sorted) {
     const must = f.skillio_triage === "must_review";
+    const look = secondLookHtml(f);
+    const ai = aiReviewLine(f);
     const div = document.createElement("div");
     div.className = "finding";
     div.innerHTML = `
@@ -1916,7 +1966,9 @@ function renderFindings(report) {
         ${must ? `<span class="triage-tag">Must review</span>` : ""}
         <span class="pill ${findingPillClass(f.severity)}">${escapeHtml((f.severity || "").toLowerCase())}</span>
       </div>
-      <div class="finding-message">${escapeHtml(findingMessage(f))}</div>
+      ${look}
+      <div class="finding-message">${look ? `<span class="finding-source">SkillSpector's alarm:</span> ` : ""}${escapeHtml(findingMessage(f))}</div>
+      ${ai ? `<div class="finding-ai">${escapeHtml(ai)}</div>` : ""}
       ${f.skillio_triage_reason ? `<div class="finding-triage-reason">${escapeHtml(f.skillio_triage_reason)}</div>` : ""}
       ${f.remediation ? `<div class="finding-remediation">Fix: ${escapeHtml(f.remediation)}</div>` : ""}
     `;
