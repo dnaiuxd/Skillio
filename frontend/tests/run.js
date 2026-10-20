@@ -1890,6 +1890,17 @@ test("only a scan that attempted nothing blames the provider", () => {
   assert.equal(n.note, undefined);
 });
 
+// B-15: install-service.sh writes only SKILLSPECTOR_PROVIDER into the launchd
+// plist, so a key exported in your shell never reaches the background service.
+// The notice used to say "set an API key" as if that were enough everywhere.
+test("the no-provider notice says the background service gets no API keys", () => {
+  const n = llmNotice({ llm_requested: true, llm_calls_attempted: 0 });
+  assert.match(n.text, /background service/);
+  assert.match(n.text, /API keys? (?:set|exported) in your (?:shell|terminal) (?:don't|doesn't|never) reach/);
+  // claude_cli signs in through the Claude CLI and needs no key.
+  assert.match(n.text, /claude_cli/);
+});
+
 test("the same setup does not get two different diagnoses", () => {
   // 0-of-4 and 1-of-4 differ only in luck. Neither may claim a config fault.
   for (const meta of [SCAN_ALL_CALLS_FAILED, SCAN_ONE_CALL_WORKED]) {

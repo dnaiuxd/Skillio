@@ -1192,10 +1192,15 @@ const COVERAGE_REASONS = {
 function llmNotice(meta) {
   if (!meta || !meta.llm_requested) return null;
 
+  // install-service.sh writes only SKILLSPECTOR_PROVIDER into the launchd
+  // plist, never a key, so "set an API key" alone was wrong under the service.
   const NO_PROVIDER =
     "LLM review was requested but no provider was configured, so this is a " +
     "static-only scan. Set SKILLSPECTOR_PROVIDER (and an API key, if your " +
-    "provider needs one), then scan again.";
+    "provider needs one), then scan again. If Skillio runs as the background " +
+    "service, it only receives SKILLSPECTOR_PROVIDER: API keys set in your " +
+    "shell don't reach it, so a key-based provider stays static there. " +
+    "claude_cli needs no key and works either way.";
 
   const attempted = Number(meta.llm_calls_attempted);
   // Reports from before SkillSpector recorded call counts. The coarse flag is
