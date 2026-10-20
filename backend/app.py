@@ -956,9 +956,50 @@ def health() -> dict:
     }
 
 
+# Per row: (which report, under which triage rule) -> its summary. A report
+# only changes when report_scanned does, so between scans every poll is a
+# dictionary lookup instead of parsing and triaging every report in the log.
+_summary_cache: dict[int, tuple[tuple, dict]] = {}
+
+
+def _summary_of(report: dict) -> dict:
+    """What the log shows of a report: its band, and Skillio's two counts."""
+    _apply_triage(report)
+    ra = report.get("risk_assessment") if isinstance(report.get("risk_assessment"), dict) else {}
+    ac = report.get("analysis_completeness") if isinstance(report.get("analysis_completeness"), dict) else {}
+    counts = report.get("skillio_triage") or {}
+    coverage = ac.get("coverage_percent")
+    return {
+        "severity": ra.get("severity"),
+        "recommendation": ra.get("recommendation"),
+        "must_review": counts.get("must_review"),
+        "notes": counts.get("notes"),
+        "partial": bool(counts.get("partial")),
+        "coverage_percent": coverage if isinstance(coverage, (int, float)) else None,
+    }
+
+
 @app.get("/api/skills")
 def list_skills(archived: bool = False) -> list:
-    return storage.list_skills(archived)
+    """The log: rows with a summary, never the full report (B-05). The detail
+    view fetches /api/skills/{id} for that."""
+    rows = storage.list_skills(archived)
+    for row in rows:
+        has_report = row.pop("has_report", False)
+        row["report"] = None
+        if not has_report:
+            row["summary"] = None
+            continue
+        key = (row.get("report_scanned") or row.get("last_scanned"), TRIAGE_RULE)
+        cached = _summary_cache.get(row["id"])
+        if cached and cached[0] == key:
+            row["summary"] = cached[1]
+            continue
+        report = storage.get_report(row["id"])
+        row["summary"] = _summary_of(report) if isinstance(report, dict) else None
+        if row["summary"] is not None:
+            _summary_cache[row["id"]] = (key, row["summary"])
+    return rows
 
 
 @app.get("/api/skills/{skill_id}")

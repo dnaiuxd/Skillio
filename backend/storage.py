@@ -247,13 +247,38 @@ def upsert_scan(
 
 
 def list_skills(archived: bool = False) -> list[dict[str, Any]]:
+    """The log's rows WITHOUT their reports — the log is polled every 1.5 s
+    during a scan, and one registry report alone is hundreds of KB. A row says
+    whether it has one (`has_report`); get_report fetches it."""
     conn = get_conn()
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(skills)")
+            if r[1] != "report_json"]
     rows = conn.execute(
-        "SELECT * FROM skills WHERE archived = ? ORDER BY last_scanned DESC",
+        f"SELECT {', '.join(cols)}, report_json IS NOT NULL AS has_report "
+        "FROM skills WHERE archived = ? ORDER BY last_scanned DESC",
         (1 if archived else 0,),
     ).fetchall()
     conn.close()
-    return [_row_to_dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["has_report"] = bool(d.get("has_report"))
+        out.append(d)
+    return out
+
+
+def get_report(skill_id: int) -> Optional[dict]:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT report_json FROM skills WHERE id = ?", (skill_id,)
+    ).fetchone()
+    conn.close()
+    if not row or not row["report_json"]:
+        return None
+    try:
+        return json.loads(row["report_json"])
+    except (json.JSONDecodeError, TypeError):
+        return None
 
 
 def get_skill(skill_id: int) -> Optional[dict[str, Any]]:

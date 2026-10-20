@@ -159,7 +159,11 @@ function severityWord(score) {
 // keeps one source of truth: if NVIDIA retunes the thresholds, we follow
 // automatically instead of quietly disagreeing with the tool we're wrapping.
 function severityBand(skill) {
-  const ra = (skill && skill.report && skill.report.risk_assessment) || null;
+  // The log carries a summary, not the report (B-05); the detail has both.
+  const ra =
+    (skill && skill.report && skill.report.risk_assessment) ||
+    (skill && skill.summary) ||
+    null;
   const stated = ra && typeof ra.severity === "string" ? ra.severity.toLowerCase() : "";
   if (SEVERITY_ORDER.includes(stated)) return stated;
   return severityWord(skill ? skill.score : null);
@@ -367,6 +371,24 @@ function durationLine(s) {
     return `<span class="scan-duration"><span aria-hidden="true">—</span><span class="visually-hidden">duration not recorded</span></span>`;
   }
   return `<span class="scan-duration">took ${fmtDuration(s.scan_seconds)}</span>`;
+}
+
+// The second line under the verdict: Skillio's must-review count, and how
+// much SkillSpector fully read when it wasn't everything — the two things the
+// log couldn't say without opening each scan. Nothing while a scan runs, for
+// the same reason as durationLine.
+function reviewLine(s) {
+  const sum = s && s.summary;
+  if (isScanning(s) || !sum || typeof sum.must_review !== "number") return "";
+  const n = sum.must_review.toLocaleString();
+  const must = sum.must_review > 0
+    ? `<span class="triage-must--some">${n} must review</span>`
+    : `${n} must review`;
+  const cov = sum.coverage_percent;
+  const read = typeof cov === "number" && cov < 100
+    ? ` · ${Math.round(cov)}% fully read`
+    : "";
+  return `<span class="scan-duration">${must}${read}</span>`;
 }
 
 // What the result line should say, kept apart from the DOM so it can be
@@ -1027,7 +1049,7 @@ function renderSkillList(skills) {
         <span class="score-badge score-badge--${sevClass}">${escapeHtml(s.score ?? "—")}</span>
         ${sevWord ? `<span class="score-severity">${sevWord}</span>` : ""}
       </td>
-      <td>${verdictCell}</td>
+      <td>${verdictCell}${reviewLine(s)}</td>
       <td>${fmtDate(s.last_scanned)}${durationLine(s)}</td>
       <td><span class="gate-text gate-text--${gateClass(s.status)}">${escapeHtml(gateStatusLabel(s.status))}</span></td>
     `;

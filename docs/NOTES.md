@@ -285,3 +285,13 @@ website can still POST a zip to localhost, since a multipart form is a
 CORS refuses — the page sends it from `WRITE_HEADERS`. And the server only
 answers to `localhost` and `127.0.0.1` in the Host header, which stops a
 DNS-rebinding site, same-origin by then, from reading the log.
+
+**The log carries a summary, not reports.** `/api/skills` is polled every
+1.5 s while a scan runs, and used to send every stored report: 737 KB for 8
+rows, ~115 MB over one 4-minute scan. It now sends each row's `summary`
+(band, recommendation, must-review and note counts, coverage) and `report:
+null`; the detail view fetches `/api/skills/{id}` for the rest. The summary
+needs the triage rule, so it's worked out in Python once per report, cached
+on (`report_scanned`, `TRIAGE_RULE`), and every poll after is a lookup. The
+log shows it as a second line under the verdict: "3 must review · 38% fully
+read", the coverage part only when the read was incomplete.

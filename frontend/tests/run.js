@@ -154,7 +154,7 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         makeUpdateClose, versionOf, attachTip, makeHelpButton,
         hideTips, allowTips, triageSummary, triageRank, renderDetailSource,
         fmtDuration, durationLine, filesChip, secondLookHtml, aiReviewLine,
-        codeSpans, updateGateControls, renderSkillList, loadSkills, setTab,
+        codeSpans, reviewLine, updateGateControls, renderSkillList, loadSkills, setTab,
         renderDetail } = sandbox;
 
 for (const [name, fn] of Object.entries({
@@ -2181,6 +2181,30 @@ test("a failed re-scan says the results are from the last scan that worked", () 
   assert.ok(texts().includes("The results below are from the last scan that worked."));
   renderScanError("Scan timed out after 900s");
   assert.ok(!texts().some((t) => /last scan that worked/.test(t)));
+});
+
+// --- B-05/B-23/K-03: the log works from a summary ----------------------------
+test("the band comes from the summary when the log has no report", () => {
+  assert.equal(severityBand({ score: 10, summary: { severity: "CRITICAL" } }), "critical");
+  assert.equal(severityBand({ score: 95, summary: null }), "critical");
+});
+
+test("the log says how many must be reviewed, and how much was read", () => {
+  const html = reviewLine({ summary: { must_review: 3, coverage_percent: 38 } });
+  assert.match(html, /<span class="triage-must--some">3 must review<\/span>/);
+  assert.match(html, /38% fully read/);
+});
+
+test("a full read and nothing to review stay quiet", () => {
+  const html = reviewLine({ summary: { must_review: 0, coverage_percent: 100 } });
+  assert.match(html, /0 must review/);
+  assert.ok(!html.includes("triage-must--some"));
+  assert.ok(!html.includes("fully read"));
+});
+
+test("no summary, or a running scan, gets no review line", () => {
+  assert.equal(reviewLine({ summary: null }), "");
+  assert.equal(reviewLine({ scan_state: "running", summary: { must_review: 2 } }), "");
 });
 
 asyncChain.then(() => {

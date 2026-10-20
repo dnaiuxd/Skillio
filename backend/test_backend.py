@@ -424,6 +424,72 @@ class StaleTempDirs(unittest.TestCase):
         stop.assert_called_once_with()
 
 
+class LightLogFeed(unittest.TestCase):
+    """B-05: the log is polled every 1.5 s during a scan, and used to carry
+    every full report — 737 KB for 8 rows. It needs a summary per row."""
+
+    tearDown = ScanLifecycle.tearDown
+
+    def setUp(self):
+        ScanLifecycle.setUp(self)
+        app._summary_cache.clear()
+        # Built here: _issue is defined further down the module.
+        self.REPORT = {
+            "risk_assessment": {"score": 70, "severity": "HIGH",
+                                "recommendation": "DO_NOT_INSTALL"},
+            "analysis_completeness": {"coverage_percent": 38.0},
+            "issues": [_issue("a", "Prompt Injection", "HIGH"),
+                       _issue("b", "Tool Misuse", "LOW")],
+        }
+
+    def _store(self, source="s", report=None):
+        return storage.upsert_scan(source=source, name="n", score=70,
+                                   verdict="DO_NOT_INSTALL",
+                                   report=report or self.REPORT, fingerprint="fp")
+
+    def test_the_list_carries_a_summary_not_the_report(self):
+        self._store()
+        row = app.list_skills()[0]
+        self.assertIsNone(row["report"])
+        self.assertEqual(row["summary"], {
+            "severity": "HIGH", "recommendation": "DO_NOT_INSTALL",
+            "must_review": 1, "notes": 1, "partial": False,
+            "coverage_percent": 38.0,
+        })
+
+    def test_the_detail_still_has_the_full_report(self):
+        row = self._store()
+        self.assertEqual(len(app.get_skill(row["id"])["report"]["issues"]), 2)
+
+    def test_a_report_is_parsed_once_not_on_every_poll(self):
+        self._store()
+        app.list_skills()
+        with mock.patch.object(app, "_apply_triage") as triage:
+            app.list_skills()
+            app.list_skills()
+        triage.assert_not_called()
+
+    def test_a_new_report_gets_a_new_summary(self):
+        with mock.patch.object(storage.time, "time", return_value=1000.0):
+            self._store()
+        app.list_skills()
+        report = json.loads(json.dumps(self.REPORT))
+        report["issues"].append(_issue("c", "Supply Chain", "CRITICAL"))
+        with mock.patch.object(storage.time, "time", return_value=2000.0):
+            self._store(report=report)
+        self.assertEqual(app.list_skills()[0]["summary"]["must_review"], 2)
+
+    def test_a_row_without_a_report_has_no_summary(self):
+        storage.begin_scan("s", "n")
+        self.assertIsNone(app.list_skills()[0]["summary"])
+
+    def test_the_list_is_small(self):
+        big = json.loads(json.dumps(self.REPORT))
+        big["issues"] = [_issue(f"f{i}", "Tool Misuse", "LOW") for i in range(2000)]
+        self._store(report=big)
+        self.assertLess(len(json.dumps(app.list_skills())), 2000)
+
+
 class FailedRescanKeepsTheLastResult(unittest.TestCase):
     """B-01: a re-scan that fails must not erase the report that is still the
     best answer — the gate may have approved exactly that report."""
