@@ -24,6 +24,7 @@ const els = {
   detailView: document.getElementById("detail-view"),
   tabCurrent: document.getElementById("tab-current"),
   tabArchived: document.getElementById("tab-archived"),
+  logPanel: document.getElementById("log-panel"),
   skillRows: document.getElementById("skill-rows"),
   logSummary: document.getElementById("log-summary"),
   emptyState: document.getElementById("empty-state"),
@@ -874,10 +875,19 @@ async function loadSkills() {
   }
 }
 
+// ARIA tabs pattern: only the selected tab is in the tab order (the arrow
+// keys move between them), and the one panel is labelled by whichever tab
+// is showing it.
 function setTab(archived) {
   showingArchived = archived;
-  els.tabCurrent.setAttribute("aria-selected", String(!archived));
-  els.tabArchived.setAttribute("aria-selected", String(archived));
+  const [on, off] = archived
+    ? [els.tabArchived, els.tabCurrent]
+    : [els.tabCurrent, els.tabArchived];
+  on.setAttribute("aria-selected", "true");
+  on.setAttribute("tabindex", "0");
+  off.setAttribute("aria-selected", "false");
+  off.setAttribute("tabindex", "-1");
+  els.logPanel.setAttribute("aria-labelledby", on.id);
   loadSkills();
 }
 
@@ -1091,8 +1101,8 @@ function llmNotice(meta) {
         `Your LLM provider is set and was used — but all ${calls(attempted)} ` +
         "came back in a form SkillSpector couldn't read, so this fell back to " +
         "static analysis.",
-      note: "Nothing is misconfigured; Rescanning usually works.",
-      action: "Rescanning",
+      note: "Nothing is misconfigured; rescanning usually works.",
+      action: "rescanning",
     };
   }
   return {
@@ -1449,6 +1459,18 @@ function resetDetailError() {
   els.detailError.classList.remove("detail-error--fail");
 }
 
+// A gate or archive call that failed. Same box and same plain look as the
+// failed delete, so no new style. Focus moves to it so it is read out — the
+// box isn't a live region, since it also fills when a detail opens — and so
+// Archive, at the top of the page, scrolls down to its answer.
+function showActionError(text) {
+  resetDetailError();
+  els.detailError.hidden = false;
+  els.detailError.textContent = text;
+  els.detailError.setAttribute("tabindex", "-1");
+  els.detailError.focus();
+}
+
 function renderDetailSource(src) {
   src = src || "";
   els.detailSource.textContent = "";
@@ -1723,7 +1745,7 @@ function renderFilesPanel(report) {
       const sev = worst.get(c.path);
       const n = counts.get(c.path) || 0;
       const badge = sev
-        ? `<span class="pill ${findingPillClass(sev)}">${n} ${escapeHtml(sev)}</span>`
+        ? `<span class="pill ${findingPillClass(sev)}">${n} finding${n === 1 ? "" : "s"} · worst ${escapeHtml(sev)}</span>`
         : `<span class="pill pill-ok pill--soft">clean</span>`;
       const bits = [c.type, typeof c.lines === "number" ? `${c.lines} lines` : null]
         .filter(Boolean)
@@ -2018,9 +2040,11 @@ async function setGateStatus(status) {
     if (!els.gateReset.hidden) els.gateReset.focus();
     loadSkills();
   } catch (e) {
-    // Record is gone or the backend is down — bail back to a fresh log.
-    showDetailView(false);
-    loadSkills();
+    // Record is gone or the backend is down. Stay here and say so: going
+    // back to the log looked like the decision had been saved.
+    showActionError(
+      "Could not save that decision — the backend may be down, or this record was removed. Nothing was changed."
+    );
   }
 }
 
@@ -2049,8 +2073,10 @@ async function onGateReset() {
     els.gateApprove.focus();
     setTab(false);
   } catch (e) {
-    showDetailView(false);
-    loadSkills();
+    // Two calls, so the first may have landed — don't claim nothing changed.
+    showActionError(
+      "Could not reset this decision — the backend may be down, or this record was removed. Go back and refresh the log to see where it stands."
+    );
   }
 }
 
@@ -2064,7 +2090,11 @@ async function setArchived(archived) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (e) {
-    // Record is gone or backend is down — fall through and refresh the list.
+    showActionError(
+      (archived ? "Could not archive this record" : "Could not restore this record to the log") +
+        " — the backend may be down, or this record was removed. Nothing was changed."
+    );
+    return;
   }
   currentSkillId = null;
   showDetailView(false);
@@ -2179,14 +2209,18 @@ window
 // --- log / archived tabs ---
 els.tabCurrent.addEventListener("click", () => setTab(false));
 els.tabArchived.addEventListener("click", () => setTab(true));
+// Two tabs, so either arrow goes to the other one; Home and End are the
+// first and last. Selection follows focus, as setTab is cheap.
 [els.tabCurrent, els.tabArchived].forEach((tab, i, tabs) => {
   tab.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      e.preventDefault();
-      const other = tabs[i === 0 ? 1 : 0];
-      other.focus();
-      other.click();
-    }
+    let to = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") to = i === 0 ? 1 : 0;
+    else if (e.key === "Home") to = 0;
+    else if (e.key === "End") to = 1;
+    if (to === null) return;
+    e.preventDefault();
+    tabs[to].focus();
+    if (to !== i) setTab(to === 1);
   });
 });
 

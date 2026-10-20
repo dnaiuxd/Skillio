@@ -54,6 +54,17 @@
   --attention-bg: color-mix(in srgb, var(--medium) 12%, var(--bg));
   --attention-line: color-mix(in srgb, var(--medium) 40%, var(--bg));
 
+  /* Hover for the solid gate buttons. Mixed toward --ink, so it darkens in
+     light and lightens in dark — either way away from the --surface label,
+     which brightness(0.9) didn't do: it took dark red to 4.23:1, under AA
+     for 14px text. Label (--surface) on the hover ground, measured:
+       --critical-hover  7.13:1 light (#973127)   5.80:1 dark (#f56862)
+       --ok-hover        7.29:1 light (#345b43)   7.61:1 dark (#58c168)
+     All clear 1.4.3's 4.5:1, and each is higher than its resting state
+     (5.61 / 5.16 and 5.81 / 6.81), so hover never loses contrast. */
+  --critical-hover: color-mix(in srgb, var(--critical) 85%, var(--ink));
+  --ok-hover: color-mix(in srgb, var(--ok) 85%, var(--ink));
+
   /* Type ramp. Six steps, replacing twelve ad-hoc sizes — the 12-15px band
      alone had drifted to five values (12, 12.5, 13, 14, 15). */
   --text-xs: 12px;             /* labels, table headers, meta, mono paths */
@@ -2089,13 +2100,13 @@ main {
 }
 
 .gate-btn[data-status="approved"]:not(:disabled):hover {
-  background: var(--ok);
-  filter: brightness(0.9);
+  background: var(--ok-hover);
+  border-color: var(--ok-hover);
 }
 
 .gate-btn[data-status="rejected"]:not(:disabled):hover {
-  background: var(--critical);
-  filter: brightness(0.9);
+  background: var(--critical-hover);
+  border-color: var(--critical-hover);
 }
 
 .gate-current {
