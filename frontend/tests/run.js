@@ -1057,6 +1057,61 @@ test("clearing takes the children and the modifier together", () => {
   assert.equal(box.classList.contains("detail-error--warn"), false);
 });
 
+// --- B-19: a failed gate or archive call stays on the page and says so -----
+// These used to bail back to the log: nothing saved, nothing said.
+function failingFetch() {
+  return Promise.reject(new TypeError("Failed to fetch"));
+}
+async function pressAndFail(call) {
+  const box = sandbox.document.getElementById("detail-error");
+  const detail = sandbox.document.getElementById("detail-view");
+  vm.runInContext("currentSkillId = 7", sandbox);
+  detail.hidden = false;
+  resetDetailError();
+  box.hidden = true;
+  const real = sandbox.fetch;
+  sandbox.fetch = failingFetch;
+  try {
+    await call();
+  } finally {
+    sandbox.fetch = real;
+  }
+  assert.equal(detail.hidden, false, "dropped back to the log");
+  assert.equal(box.hidden, false, "the failure box stayed hidden");
+  assert.equal(vm.runInContext("currentSkillId", sandbox), 7, "forgot which record this is");
+  assert.equal(focused, box, "focus did not move to the message");
+  return box.textContent;
+}
+
+testAsync("a decision that didn't save says so and stays put", async () => {
+  const t = await pressAndFail(() => sandbox.setGateStatus("approved"));
+  assert.match(t, /Could not save that decision/);
+  assert.match(t, /Nothing was changed/);
+});
+
+testAsync("a reset that failed says so and stays put", async () => {
+  const t = await pressAndFail(() => sandbox.onGateReset());
+  assert.match(t, /Could not reset this decision/);
+});
+
+testAsync("an archive that failed says so and stays put", async () => {
+  const t = await pressAndFail(() => sandbox.setArchived(true));
+  assert.match(t, /Could not archive this record/);
+});
+
+testAsync("a restore that failed says so and stays put", async () => {
+  const t = await pressAndFail(() => sandbox.setArchived(false));
+  assert.match(t, /Could not restore this record to the log/);
+});
+
+test("the action failure reuses the box's own look, not a new one", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
+  const fn = src.slice(src.indexOf("function showActionError"));
+  const body = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(body, /resetDetailError\(\)/);
+  assert.equal(/classList\.add/.test(body), false, "a new modifier class crept in");
+});
+
 test("the failure path never prints a raw exit code at the reader", () => {
   // "produced no report (exit code 2)" is a true sentence that helps nobody.
   // It belongs in the disclosure, never in the lead or the hint.
@@ -1603,6 +1658,64 @@ test("the log heading and the registry label read as intended", () => {
   assert.equal(/MCP registry/.test(appSource), false);
 });
 
+// --- B-17: Current / Archived are a real ARIA tab set ----------------------
+test("both tabs control one tabpanel, and only the selected one is tabbable", () => {
+  const cur = html.match(/<button[^>]*id="tab-current"[^>]*>/)[0];
+  const arc = html.match(/<button[^>]*id="tab-archived"[^>]*>/)[0];
+  for (const t of [cur, arc]) assert.match(t, /aria-controls="log-panel"/);
+  assert.match(html, /<div[^>]*id="log-panel"[^>]*role="tabpanel"[^>]*aria-labelledby="tab-current"/);
+  assert.equal(/tabindex/.test(cur), false, "the selected tab left the tab order");
+  assert.match(arc, /tabindex="-1"/);
+  // The panel wraps everything the tabs switch between.
+  const panel = html.slice(html.indexOf('id="log-panel"'), html.indexOf('id="detail-view"'));
+  for (const id of ["log-summary", "skill-rows", "empty-state"]) assert.match(panel, new RegExp(`id="${id}"`));
+});
+
+test("setTab moves the roving tabindex and the panel's label with the selection", () => {
+  const cur = sandbox.document.getElementById("tab-current");
+  const arc = sandbox.document.getElementById("tab-archived");
+  const panel = sandbox.document.getElementById("log-panel");
+  sandbox.setTab(true);
+  assert.equal(arc.getAttribute("aria-selected"), "true");
+  assert.equal(arc.getAttribute("tabindex"), "0");
+  assert.equal(cur.getAttribute("tabindex"), "-1");
+  assert.equal(panel.getAttribute("aria-labelledby"), "tab-archived");
+  sandbox.setTab(false);
+  assert.equal(cur.getAttribute("tabindex"), "0");
+  assert.equal(arc.getAttribute("tabindex"), "-1");
+  assert.equal(panel.getAttribute("aria-labelledby"), "tab-current");
+});
+
+test("arrow keys, Home and End switch tabs and take focus along", () => {
+  const cur = sandbox.document.getElementById("tab-current");
+  const arc = sandbox.document.getElementById("tab-archived");
+  const press = (node, key) => node.fire("keydown", { key, preventDefault() {} });
+  sandbox.setTab(false);
+  press(cur, "ArrowRight");
+  assert.equal(focused, arc);
+  assert.equal(arc.getAttribute("aria-selected"), "true");
+  press(arc, "ArrowLeft");
+  assert.equal(focused, cur);
+  assert.equal(cur.getAttribute("aria-selected"), "true");
+  press(cur, "End");
+  assert.equal(focused, arc);
+  press(arc, "Home");
+  assert.equal(focused, cur);
+  assert.equal(cur.getAttribute("aria-selected"), "true");
+});
+
+// --- B-18 / B-14: words that name real places and real times ---------------
+test("restore names the log, which is a place that exists", () => {
+  assert.match(html, /<button id="restore-btn"[^>]*>Restore to log<\/button>/);
+  assert.equal(/Scanned Skill/.test(html), false);
+});
+
+test("static mode's time is honest about a whole repo", () => {
+  const info = html.slice(html.indexOf('id="llm-info"'), html.indexOf("</div>", html.indexOf('id="llm-info"')));
+  assert.match(info.replace(/\s+/g, " "), /Seconds for one skill; a whole repo can take several minutes\./);
+  assert.equal(/Takes\s+seconds/.test(info), false);
+});
+
 test("the scan input's accessible name follows the mode", () => {
   // The accessible name outranks the placeholder for a screen reader, so a
   // stale one announces the exact input the field cannot take.
@@ -1758,7 +1871,13 @@ test("a configured provider is never reported as missing", () => {
   assert.ok(!/SKILLSPECTOR_PROVIDER/.test(whole),
     "told the user to set a provider that was already set");
   assert.match(n.text, /provider is set/);
-  assert.match(n.note, /Rescanning usually works/);
+  assert.match(n.note, /Rescanning usually works/i);
+});
+
+test("a sentence carries on in lower case after its semicolon", () => {
+  const n = llmNotice(SCAN_ALL_CALLS_FAILED);
+  assert.equal(n.note, "Nothing is misconfigured; rescanning usually works.");
+  assert.ok(n.note.includes(n.action), "the underlined word no longer matches");
 });
 
 test("only a scan that attempted nothing blames the provider", () => {
@@ -1880,6 +1999,21 @@ test("the triage colour rule is declared, not just mentioned", () => {
   assert.match(css, /^\.triage-must--some \{\n  color: var\(--critical\);\n\}/m);
 });
 
+// --- B-11: the gate buttons' hover keeps AA in both themes ----------------
+test("the gate hover is a measured token, not a brightness filter", () => {
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.equal(/^\s*filter:\s*brightness/m.test(css), false,
+    "brightness() darkens dark-theme red to 4.23:1 under --surface text");
+  assert.match(css, /^\s*--critical-hover:\s*color-mix\(in srgb, var\(--critical\) \d+%, var\(--ink\)\);/m);
+  assert.match(css, /^\s*--ok-hover:\s*color-mix\(in srgb, var\(--ok\) \d+%, var\(--ink\)\);/m);
+  for (const [status, token] of [["rejected", "critical"], ["approved", "ok"]]) {
+    const m = css.match(new RegExp(`\\n\\.gate-btn\\[data-status="${status}"\\]:not\\(:disabled\\):hover \\{([^}]*)\\}`));
+    assert.ok(m, `no hover rule for ${status}`);
+    assert.match(m[1], new RegExp(`background: var\\(--${token}-hover\\)`));
+    assert.match(m[1], new RegExp(`border-color: var\\(--${token}-hover\\)`));
+  }
+});
+
 // --- scan duration ----------------------------------------------------------
 // Under the date in the log, so a slow scan shows up without opening it.
 test("durations read as minutes and seconds", () => {
@@ -1928,6 +2062,24 @@ test("a complete read keeps the plain count", () => {
 test("no completeness data means no files chip", () => {
   assert.equal(filesChip(null), null);
   assert.equal(filesChip({ total_components: 0 }), null);
+});
+
+// --- B-13: the files panel badge counts findings, then names the worst ----
+test("a file's badge reads as N findings, worst severity", () => {
+  const list = sandbox.document.getElementById("files-panel-list");
+  sandbox.renderFilesPanel({
+    components: [{ path: "a.py" }, { path: "b.py" }, { path: "c.py" }],
+    issues: [
+      { location: { file: "a.py" }, severity: "HIGH" },
+      { location: { file: "a.py" }, severity: "low" },
+      { location: { file: "a.py" }, severity: "medium" },
+      { location: { file: "b.py" }, severity: "medium" },
+    ],
+  });
+  assert.match(list.innerHTML, />3 findings · worst high</);
+  assert.match(list.innerHTML, />1 finding · worst medium</);
+  assert.equal(/>\d+ (high|medium)</.test(list.innerHTML), false,
+    "back to '3 high', which reads as three high findings");
 });
 
 test("the partial chip's dot is declared, not just mentioned", () => {

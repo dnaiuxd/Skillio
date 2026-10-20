@@ -178,8 +178,9 @@
       </div>
       <div class="llm-info" id="llm-info" hidden>
         <p><strong>Off</strong> — static analysis only: about 20 analyzers
-          matching patterns, parsing code and tracing tainted data. Takes
-          seconds, costs nothing.</p>
+          matching patterns, parsing code and tracing tainted data. Seconds
+          for one skill; a whole repo can take several minutes. Costs
+          nothing.</p>
         <p><strong>On</strong> — adds 3 semantic analyzers that read the skill
           and judge whether what it <em>does</em> matches what it <em>says</em>.
           That's the only thing which catches instructions hidden in
@@ -209,10 +210,11 @@
             </button>
           </div>
           <div class="segmented" role="tablist" aria-label="Log view">
-            <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true">Current</button>
-            <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false">Archived</button>
+            <button type="button" class="segment" role="tab" id="tab-current" aria-selected="true" aria-controls="log-panel">Current</button>
+            <button type="button" class="segment" role="tab" id="tab-archived" aria-selected="false" aria-controls="log-panel" tabindex="-1">Archived</button>
           </div>
         </div>
+        <div id="log-panel" role="tabpanel" aria-labelledby="tab-current">
         <div id="log-summary" class="log-summary" hidden></div>
         <div class="skill-table-wrap">
           <table class="skill-table">
@@ -232,13 +234,14 @@
         <p id="empty-state" class="empty-state" hidden>
           No skills scanned yet. Paste a source on the left and run a scan.
         </p>
+        </div>
       </section>
 
       <section id="detail-view" hidden>
         <div class="detail-actions">
           <button id="back-btn" class="btn-text">← Back to log</button>
           <span class="detail-actions-right">
-            <button id="restore-btn" class="btn-text" hidden>Restore to Scanned Skill</button>
+            <button id="restore-btn" class="btn-text" hidden>Restore to log</button>
             <button id="archive-btn" class="btn-text">Archive</button>
             <button id="delete-btn" class="btn-text btn-text-danger" hidden>Delete permanently</button>
           </span>
