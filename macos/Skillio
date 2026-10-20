@@ -16,7 +16,12 @@ set -e
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO/backend"
 
+# --no-access-log: the page polls every 1.5 s while a scan runs, and launchd
+# sends this process's output to one log file that nothing rotates, so every
+# poll was a line that stayed forever. Startup lines and errors are not access
+# logs and still arrive.
+#
 # exec, so this shell is replaced rather than left waiting: launchd tracks the
 # pid it started, and KeepAlive would otherwise be watching a wrapper instead
 # of the server it cares about.
-exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "${SKILLIO_PORT:-9797}"
+exec .venv/bin/uvicorn app:app --host 127.0.0.1 --port "${SKILLIO_PORT:-9797}" --no-access-log
