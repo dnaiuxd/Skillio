@@ -1,4 +1,7 @@
 const API = "/api";
+// Every write carries this. The backend refuses a write without it: another
+// site can't add a custom header without a preflight, which CORS refuses.
+const WRITE_HEADERS = { "X-Skillio": "1" };
 
 const els = {
   health: document.getElementById("health"),
@@ -1499,11 +1502,11 @@ async function runScan() {
       const form = new FormData();
       form.append("file", stagedFile);
       form.append("use_llm", String(useLlm));
-      res = await fetch(`${API}/scan/upload`, { method: "POST", body: form });
+      res = await fetch(`${API}/scan/upload`, { method: "POST", headers: WRITE_HEADERS, body: form });
     } else {
       res = await fetch(`${API}/scan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
         body: JSON.stringify({
           source,
           use_llm: useLlm,
@@ -2003,7 +2006,7 @@ async function setGateStatus(status) {
   try {
     const res = await fetch(`${API}/skills/${currentSkillId}/status`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2034,7 +2037,7 @@ async function onGateReset() {
     ]) {
       const res = await fetch(`${API}${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2056,7 +2059,7 @@ async function setArchived(archived) {
   try {
     const res = await fetch(`${API}/skills/${currentSkillId}/archive`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
       body: JSON.stringify({ archived }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2080,7 +2083,7 @@ async function deleteSkill() {
   }
 
   try {
-    const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE" });
+    const res = await fetch(`${API}/skills/${currentSkillId}`, { method: "DELETE", headers: WRITE_HEADERS });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch (e) {
     resetDetailError();

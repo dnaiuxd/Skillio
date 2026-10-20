@@ -39,8 +39,9 @@ except ImportError:  # pragma: no cover
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 import second_look
@@ -85,6 +86,30 @@ app = FastAPI(title="Skillio", version=SKILLIO_VERSION, lifespan=lifespan)
 # The frontend is served from this same app (same origin), so CORS isn't
 # needed for normal use. Scope it to localhost only — a wildcard would let
 # any site you visit POST /api/scan (which shells out) or read your log.
+#
+# CORS alone doesn't stop a write. A multipart form POST is a "simple
+# request": the browser sends it to localhost and only hides the response,
+# so any page could auto-submit a zip and spend a scan, or your LLM quota.
+# Every write must carry X-Skillio: 1. A page can't add a custom header
+# cross-site without a preflight, and the preflight is what CORS refuses.
+WRITE_HEADER = "x-skillio"
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+@app.middleware("http")
+async def require_write_header(request: Request, call_next):
+    if (
+        request.method not in _SAFE_METHODS
+        and request.url.path.startswith("/api/")
+        and request.headers.get(WRITE_HEADER) != "1"
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Writes must come from Skillio's own page."},
+        )
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -93,6 +118,15 @@ app.add_middleware(
     ],
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# DNS rebinding: a site whose name is made to resolve to 127.0.0.1 reaches
+# this server as same-origin and can read the log — but its requests still
+# carry its own name in Host. Only answer to the names this is served on.
+# Added last, so it runs first. (No [::1]: uvicorn binds 127.0.0.1 only, and
+# the middleware can't parse a bracketed IPv6 host anyway.)
+app.add_middleware(
+    TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"]
 )
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

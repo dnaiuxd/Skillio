@@ -9,6 +9,7 @@ bug sat on. They are cheap because none of this touches the network, the
 database or the skillspector binary.
 """
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -1972,6 +1973,83 @@ class SecondLookTriage(unittest.TestCase):
              mock.patch.object(app, "_release_scan_slot"):
             app._scan_worker("s", "n", "t", False)
         self.assertIsNone(stored["error"])
+
+
+
+def _asgi(method, path, headers=(), host="localhost:9797"):
+    """One request straight through the ASGI app — no httpx, no server.
+    Returns the status code."""
+    import asyncio
+    scope = {
+        "type": "http", "method": method, "path": path, "raw_path": path.encode(),
+        "query_string": b"", "http_version": "1.1", "scheme": "http",
+        "root_path": "", "server": ("127.0.0.1", 9797), "client": ("127.0.0.1", 50000),
+        "headers": [(b"host", host.encode())]
+                   + [(k.lower().encode(), v.encode()) for k, v in headers],
+    }
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(app.app(scope, receive, send))
+    return next(m["status"] for m in sent if m["type"] == "http.response.start")
+
+
+class OtherSitesCantDriveSkillio(unittest.TestCase):
+    """B-03: a form on any website can POST to localhost — a multipart form is
+    a CORS "simple request", sent before CORS gets a say. A custom header
+    can't be sent cross-site without a preflight, which CORS refuses."""
+
+    def test_a_write_without_the_header_is_refused(self):
+        with mock.patch.object(app, "scan") as scan:
+            self.assertEqual(_asgi("POST", "/api/scan"), 403)
+        scan.assert_not_called()
+
+    def test_every_write_route_is_covered(self):
+        for method, path in [("POST", "/api/scan"), ("POST", "/api/scan/upload"),
+                             ("POST", "/api/skills/1/status"),
+                             ("POST", "/api/skills/1/archive"),
+                             ("DELETE", "/api/skills/1")]:
+            self.assertEqual(_asgi(method, path), 403, path)
+
+    def test_a_write_with_the_header_gets_through(self):
+        # Through to the route, which then rejects the empty body — not 403.
+        self.assertEqual(_asgi("POST", "/api/scan", [("X-Skillio", "1")]), 422)
+
+    def test_reads_need_no_header(self):
+        with mock.patch.object(app, "_skillspector_path", return_value=None):
+            self.assertEqual(_asgi("GET", "/api/health"), 200)
+
+    def test_a_preflight_is_answered_for_skillio_only(self):
+        ok = _asgi("OPTIONS", "/api/scan", [
+            ("Origin", "http://localhost:9797"),
+            ("Access-Control-Request-Method", "POST"),
+            ("Access-Control-Request-Headers", "x-skillio")])
+        self.assertEqual(ok, 200)
+        bad = _asgi("OPTIONS", "/api/scan", [
+            ("Origin", "https://evil.example"),
+            ("Access-Control-Request-Method", "POST"),
+            ("Access-Control-Request-Headers", "x-skillio")])
+        self.assertEqual(bad, 400)
+
+    def test_an_unknown_host_is_refused(self):
+        """DNS rebinding: evil.example resolving to 127.0.0.1 arrives with
+        its own name in Host, and would otherwise read the log."""
+        with mock.patch.object(app, "_skillspector_path", return_value=None):
+            self.assertEqual(_asgi("GET", "/api/health", host="evil.example:9797"), 400)
+            self.assertEqual(_asgi("GET", "/api/health", host="127.0.0.1:9797"), 200)
+            self.assertEqual(_asgi("GET", "/api/health", host="localhost:9797"), 200)
+
+    def test_the_page_sends_the_header_on_every_write(self):
+        js = (Path(__file__).parent.parent / "frontend" / "app.js").read_text()
+        writes = re.findall(r'method: "(?:POST|DELETE)"[^}]*}', js)
+        self.assertEqual(len(writes), 6)
+        for call in writes:
+            self.assertIn("WRITE_HEADERS", call)
 
 
 if __name__ == "__main__":

@@ -256,3 +256,11 @@ answer, and the gate may have approved exactly that report. `report_scanned`
 records when the kept report was made, since `last_scanned` moves the moment
 a re-scan starts. The detail page says the results are from the last scan
 that worked, and on when; the log's duration line reads "failed after …".
+
+**Other sites can't drive Skillio.** CORS only hides responses: a form on any
+website can still POST a zip to localhost, since a multipart form is a
+"simple request". So every write (`POST`/`DELETE` under `/api/`) must carry
+`X-Skillio: 1`, which a page can't send cross-site without a preflight that
+CORS refuses — the page sends it from `WRITE_HEADERS`. And the server only
+answers to `localhost` and `127.0.0.1` in the Host header, which stops a
+DNS-rebinding site, same-origin by then, from reading the log.
