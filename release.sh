@@ -70,6 +70,27 @@ if [ -n "$(git status --porcelain)" ]; then
   fail "working tree has uncommitted changes — commit or stash them first"
 fi
 
+# A tag on a main that has fallen behind, or forked from, origin/main names a
+# tree nobody else has: the push is rejected, or lands as a second history.
+# Ahead is allowed. That is the ordinary case — your work is committed locally
+# and the release commit this script makes is unpushed too, and the final line
+# pushes both together. Unreachable is refused, because "could not check" is
+# not "in step". Fetching only updates origin/main locally, so --dry-run does
+# the same check and gives the same answer.
+git remote get-url origin >/dev/null 2>&1 || fail "no remote called 'origin' — cannot check main against it"
+git fetch --quiet origin main 2>/dev/null \
+  || fail "could not fetch origin/main — check your connection, then try again"
+LOCAL="$(git rev-parse HEAD)"
+REMOTE="$(git rev-parse refs/remotes/origin/main)"
+if [ "$LOCAL" != "$REMOTE" ]; then
+  BASE="$(git merge-base HEAD refs/remotes/origin/main)"
+  if [ "$BASE" = "$LOCAL" ]; then
+    fail "main is behind origin/main — run 'git pull' first, then release"
+  elif [ "$BASE" != "$REMOTE" ]; then
+    fail "main has diverged from origin/main — reconcile them (git pull --rebase) before releasing"
+  fi
+fi
+
 TAG="v$NEXT"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && fail "tag $TAG already exists"
 

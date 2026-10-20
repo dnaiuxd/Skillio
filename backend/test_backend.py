@@ -860,6 +860,88 @@ class ReleaseScript(unittest.TestCase):
         self.assertNotIn("MAJOR.MINOR.PATCH version", proc.stderr)
 
 
+class ReleaseScriptOrigin(unittest.TestCase):
+    """release.sh tags and says "push it with git push --follow-tags". A tag
+    cut on a main that is behind or has diverged from origin/main describes a
+    tree nobody else has, and the push then fails or, worse, publishes a fork.
+    Ahead is the normal case: the release commit itself is unpushed, and so
+    may be work you committed and are releasing in the same sitting.
+
+    These run the real script inside a throwaway clone with a bare origin, so
+    nothing here touches the repository under test."""
+
+    SCRIPT = Path(__file__).resolve().parent.parent / "release.sh"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.origin = self.tmp / "origin.git"
+        self.work = self.tmp / "work"
+        self.other = self.tmp / "other"
+        self._git(self.tmp, "init", "-q", "--bare", "-b", "main", str(self.origin))
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(self.work))
+        (self.work / "backend").mkdir()
+        (self.work / "backend" / "app.py").write_text('SKILLIO_VERSION = "1.0.0"\n')
+        shutil.copy(self.SCRIPT, self.work / "release.sh")
+        self._commit(self.work, "first")
+        self._git(self.work, "push", "-q", "origin", "main")
+
+    def _git(self, cwd, *args):
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
+               "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        subprocess.run(["git", *args], cwd=cwd, env=env, check=True,
+                       capture_output=True, text=True)
+
+    def _commit(self, repo, name):
+        (repo / f"{name}.txt").write_text(name)
+        self._git(repo, "add", "-A")
+        self._git(repo, "commit", "-q", "-m", name)
+
+    def _dry_run(self):
+        return subprocess.run(
+            ["bash", str(self.work / "release.sh"), "patch", "--dry-run"],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "GIT_CONFIG_GLOBAL": os.devnull},
+        )
+
+    def _someone_else_pushes(self):
+        self._git(self.tmp, "clone", "-q", str(self.origin), str(self.other))
+        self._commit(self.other, "theirs")
+        self._git(self.other, "push", "-q", "origin", "main")
+
+    def test_in_step_with_origin_is_fine(self):
+        proc = self._dry_run()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("nothing changed", proc.stdout)
+
+    def test_ahead_of_origin_is_fine(self):
+        self._commit(self.work, "unpushed")
+        proc = self._dry_run()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_behind_origin_is_refused(self):
+        self._someone_else_pushes()
+        proc = self._dry_run()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("behind", proc.stderr)
+        self.assertIn("git pull", proc.stderr)
+
+    def test_diverged_from_origin_is_refused(self):
+        self._someone_else_pushes()
+        self._commit(self.work, "mine")
+        proc = self._dry_run()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("diverged", proc.stderr)
+
+    def test_an_origin_that_cannot_be_reached_is_refused(self):
+        """Not being able to check is not the same as being in step."""
+        self._git(self.work, "remote", "set-url", "origin", str(self.tmp / "gone.git"))
+        proc = self._dry_run()
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("origin", proc.stderr)
+
+
 class VersionCache(unittest.TestCase):
     """`skillspector --version` spins up the whole CLI, so the answer is
     cached. A FAILURE is not an answer, though — caching that made one bad
@@ -1679,6 +1761,20 @@ class LoginItemName(unittest.TestCase):
         port is no longer on the command line."""
         text = self.LAUNCHER.read_text()
         self.assertIn('"${SKILLIO_PORT:-9797}"', text)
+
+    def test_it_does_not_log_every_request(self):
+        """The UI polls every 1.5 s while a scan runs, and launchd points
+        stdout and stderr at one file that nothing ever rotates. Startup
+        lines and errors are not access-log lines, so they still arrive."""
+        self.assertRegex(self.LAUNCHER.read_text(), r"\nexec .*uvicorn .*--no-access-log")
+
+    def test_nothing_points_at_a_rail_control_that_was_removed(self):
+        """Skillio.command said to click Run at login at the bottom of the
+        left rail, after that control had left the UI. ./macos/install-service.sh
+        is the only way in now."""
+        text = (self.ROOT / "Skillio.command").read_text()
+        self.assertNotIn("left rail", text)
+        self.assertNotIn("Run at login", text)
 
     def test_it_finds_the_repository_from_its_own_location(self):
         """The installer writes no paths into it, so it has to orient itself

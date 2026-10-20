@@ -119,8 +119,7 @@ if [ ! -f "$PLIST" ] && [ ! -f "$DECLINED" ] && [ -t 0 ]; then
         say "    Safari:  File menu → Add to Dock…"
         printf '\n'
         say "  Hand it to macOS after all, so it starts at login:"
-        say "    Run at login, at the bottom of the left rail in Skillio"
-        say "    (or ./macos/install-service.sh)"
+        say "    ./macos/install-service.sh"
         printf '\n'
         ;;
       *)
@@ -150,7 +149,7 @@ elif [ -f "$DECLINED" ]; then
   # visible in the single run where it was turned down.
   printf '\n'
   say "Running in this window. To have macOS keep Skillio running instead,"
-  say "click Run at login at the bottom of the left rail."
+  say "run ./macos/install-service.sh"
   printf '\n'
 fi
 
