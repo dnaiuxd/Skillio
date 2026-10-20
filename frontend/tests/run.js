@@ -1099,6 +1099,80 @@ testAsync("an archive that failed says so and stays put", async () => {
   assert.match(t, /Could not archive this record/);
 });
 
+// --- B-10: "Scan again" re-runs a scan from the detail page ------------------
+// It used to mean going back to the log, copying the source and pasting it.
+// An upload's temp file is gone once its scan ends, so it gets no button.
+const scanAgainBtn = sandbox.document.getElementById("scan-again-btn");
+const rescannable = (over = {}) => ({
+  id: 9, name: "x", source: "/tmp/x", status: "pending", archived: false,
+  scan_state: "done", target_type: "skill",
+  report: { metadata: { llm_requested: true } }, ...over,
+});
+
+test("Scan again shows for a path or URL scan", () => {
+  renderDetail(rescannable());
+  assert.equal(scanAgainBtn.hidden, false);
+  renderDetail(rescannable({ source: "https://github.com/o/r" }));
+  assert.equal(scanAgainBtn.hidden, false);
+});
+
+test("Scan again hides for an upload, an archived row, or a scan already running", () => {
+  renderDetail(rescannable({ source: "skill.zip · upload:0123456789abcdef0123456789abcdef" }));
+  assert.equal(scanAgainBtn.hidden, true, "an upload's file is already deleted");
+  renderDetail(rescannable({ archived: true }));
+  assert.equal(scanAgainBtn.hidden, true);
+  renderDetail(rescannable({ scan_state: "running" }));
+  assert.equal(scanAgainBtn.hidden, true);
+});
+
+async function pressScanAgain(row, answer) {
+  const sent = [];
+  // Earlier tests leave a scan "running"; this one starts from an idle app.
+  vm.runInContext("currentSkillId = 9; scanning = false; posting = false", sandbox);
+  detailView.hidden = false;
+  renderDetail(row);
+  const real = sandbox.fetch;
+  sandbox.fetch = (url, init) => {
+    sent.push({ url, init });
+    if (init && init.method === "POST") return answer();
+    return new Promise(() => {});
+  };
+  try {
+    await sandbox.scanAgain();
+  } finally {
+    sandbox.fetch = real;
+  }
+  return sent.filter((r) => r.init && r.init.method === "POST");
+}
+
+testAsync("Scan again posts the same source, mode and LLM setting", async () => {
+  const [post] = await pressScanAgain(rescannable(),
+    () => okJson({ id: 9, scan_state: "running" }));
+  assert.match(post.url, /\/api\/scan$/);
+  assert.equal(post.init.headers["X-Skillio"], "1", "a write without the header is refused");
+  assert.deepEqual(JSON.parse(post.init.body),
+    { source: "/tmp/x", use_llm: true, mcp_registry: false });
+});
+
+testAsync("Scan again on a registry row scans it as a registry", async () => {
+  const [post] = await pressScanAgain(
+    rescannable({ target_type: "mcp_registry", source: "https://r.example/v0/servers",
+                  report: { metadata: {} } }),
+    () => okJson({ id: 9, scan_state: "running" }));
+  assert.deepEqual(JSON.parse(post.init.body),
+    { source: "https://r.example/v0/servers", use_llm: false, mcp_registry: true });
+});
+
+testAsync("a Scan again that couldn't start says why and stays put", async () => {
+  await pressScanAgain(rescannable(), () => Promise.resolve({
+    ok: false, status: 409, json: async () => ({ detail: "A scan is already running." }),
+  }));
+  assert.equal(detailView.hidden, false, "dropped back to the log");
+  assert.equal(detailError.hidden, false);
+  assert.match(detailError.textContent, /Couldn't start the scan — A scan is already running/);
+  assert.equal(focused, detailError, "focus did not move to the message");
+});
+
 testAsync("a restore that failed says so and stays put", async () => {
   const t = await pressAndFail(() => sandbox.setArchived(false));
   assert.match(t, /Could not restore this record to the log/);
@@ -1871,13 +1945,23 @@ test("a configured provider is never reported as missing", () => {
   assert.ok(!/SKILLSPECTOR_PROVIDER/.test(whole),
     "told the user to set a provider that was already set");
   assert.match(n.text, /provider is set/);
-  assert.match(n.note, /Rescanning usually works/i);
+  assert.match(n.note, /Scan again usually works/i);
 });
 
 test("a sentence carries on in lower case after its semicolon", () => {
   const n = llmNotice(SCAN_ALL_CALLS_FAILED);
-  assert.equal(n.note, "Nothing is misconfigured; rescanning usually works.");
+  assert.equal(n.note, "Nothing is misconfigured; pressing Scan again usually works.");
   assert.ok(n.note.includes(n.action), "the underlined word no longer matches");
+});
+
+test("the LLM notices point at Scan again, or at re-uploading for an upload", () => {
+  const all = llmNotice(SCAN_ALL_CALLS_FAILED, { upload: true });
+  assert.equal(all.note, "Nothing is misconfigured; uploading the .zip again usually works.");
+  assert.ok(all.note.includes(all.action));
+  const some = llmNotice(SCAN_ONE_CALL_WORKED, { upload: true });
+  assert.match(some.note, /^Uploading the \.zip again usually recovers them/);
+  assert.ok(some.note.includes(some.action));
+  assert.equal(llmNotice(SCAN_ONE_CALL_WORKED).action, "Scan again");
 });
 
 test("only a scan that attempted nothing blames the provider", () => {
@@ -1913,7 +1997,7 @@ test("a partly degraded scan says how much it lost", () => {
   const n = llmNotice(SCAN_ONE_CALL_WORKED);
   assert.match(n.text, /3 of 4 calls/);
   assert.match(n.text, /static analysis alone/);
-  assert.match(n.note, /Rescanning usually recovers them/);
+  assert.match(n.note, /Pressing Scan again usually recovers them/);
 });
 
 test("the word to underline is actually present in the note", () => {

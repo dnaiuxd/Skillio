@@ -2386,7 +2386,7 @@ class OtherSitesCantDriveSkillio(unittest.TestCase):
     def test_the_page_sends_the_header_on_every_write(self):
         js = (Path(__file__).parent.parent / "frontend" / "app.js").read_text()
         writes = re.findall(r'method: "(?:POST|DELETE)"[^}]*}', js)
-        self.assertEqual(len(writes), 6)
+        self.assertEqual(len(writes), 7)  # + Scan again (B-10)
         for call in writes:
             self.assertIn("WRITE_HEADERS", call)
 

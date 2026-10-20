@@ -29,6 +29,7 @@ const els = {
   logSummary: document.getElementById("log-summary"),
   emptyState: document.getElementById("empty-state"),
   backBtn: document.getElementById("back-btn"),
+  scanAgainBtn: document.getElementById("scan-again-btn"),
   archiveBtn: document.getElementById("archive-btn"),
   restoreBtn: document.getElementById("restore-btn"),
   deleteBtn: document.getElementById("delete-btn"),
@@ -125,6 +126,8 @@ function toggleTheme() {
 const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
 let currentSkillId = null;
+// What "Scan again" sends for the open record, or null when it can't.
+let rescan = null;
 // True while the server has a scan in flight — set from the log, not guessed
 // here, so a reload during a scan restores the state instead of losing it.
 let scanning = false;
@@ -1189,7 +1192,9 @@ const COVERAGE_REASONS = {
 // The call counts tell the two apart. Nothing attempted means no provider;
 // attempts that all failed mean the provider is fine and the replies weren't
 // parseable, which another run often gets past.
-function llmNotice(meta) {
+// `upload`: the scan came from a .zip whose temp file is already deleted, so
+// there's no Scan again button to point at — only uploading it again.
+function llmNotice(meta, { upload = false } = {}) {
   if (!meta || !meta.llm_requested) return null;
 
   // install-service.sh writes only SKILLSPECTOR_PROVIDER into the launchd
@@ -1221,16 +1226,22 @@ function llmNotice(meta) {
         `Your LLM provider is set and was used — but all ${calls(attempted)} ` +
         "came back in a form SkillSpector couldn't read, so this fell back to " +
         "static analysis.",
-      note: "Nothing is misconfigured; rescanning usually works.",
-      action: "rescanning",
+      ...(upload
+        ? { note: "Nothing is misconfigured; uploading the .zip again usually works.",
+            action: "uploading the .zip again" }
+        : { note: "Nothing is misconfigured; pressing Scan again usually works.",
+            action: "Scan again" }),
     };
   }
   return {
     text:
       `LLM review only partly ran: ${failed} of ${calls(attempted)} came back ` +
       "unreadable, so some files were judged by static analysis alone.",
-    note: "Rescanning usually recovers them.",
-    action: "Rescanning",
+    ...(upload
+      ? { note: "Uploading the .zip again usually recovers them.",
+          action: "Uploading the .zip again" }
+      : { note: "Pressing Scan again usually recovers them.",
+          action: "Scan again" }),
   };
 }
 
@@ -1738,6 +1749,17 @@ function renderDetail(skill) {
   els.archiveBtn.hidden = skill.archived;
   els.restoreBtn.hidden = !skill.archived;
   els.deleteBtn.hidden = !skill.archived;
+  // Only what can be found again: an upload's temp file is deleted when its
+  // scan ends, and an archived row would re-scan into the current log.
+  rescan = skill.archived || isUploadSource(skill.source) || !skill.source
+    ? null
+    : {
+        source: skill.source,
+        use_llm: !!(skill.report && skill.report.metadata &&
+                    skill.report.metadata.llm_requested),
+        mcp_registry: skill.target_type === "mcp_registry",
+      };
+  els.scanAgainBtn.hidden = !rescan || isScanning(skill);
   updateGateControls(skill);
   detailScanState = skill.scan_state || "done";
 
@@ -1806,7 +1828,7 @@ function renderDetail(skill) {
         "cleared. Review the findings below and decide again."
     );
   }
-  const llm = llmNotice(meta);
+  const llm = llmNotice(meta, { upload: isUploadSource(skill.source) });
   if (llm) notices.push(llm);
   const coverage = coverageNotice(skill.report);
   if (coverage) notices.push(coverage);
@@ -2212,6 +2234,48 @@ async function onGateReset() {
   }
 }
 
+// An upload's source is "<file>.zip · upload:<content hash>" (app.py), so the
+// suffix is what marks it — the filename alone could be anything.
+function isUploadSource(src) {
+  return / · upload:[0-9a-f]+$/.test(src || "");
+}
+
+// Re-runs the open record's scan the way it ran before: same source, same
+// mode, same LLM setting. The row flips to running, so the page re-renders
+// with its "Re-scan in progress" notice — focus goes there, since the button
+// that had it is now hidden.
+async function scanAgain() {
+  if (currentSkillId == null || !rescan || scanning || posting) return;
+  const id = currentSkillId;
+  posting = true;
+  try {
+    const res = await fetch(`${API}/scan`, {
+      method: "POST",
+      headers: { ...WRITE_HEADERS, "Content-Type": "application/json" },
+      body: JSON.stringify(rescan),
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch (_) {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+  } catch (e) {
+    showActionError(requestMessage(e, "Couldn't start the scan"));
+    return;
+  } finally {
+    posting = false;
+  }
+  showScanStatus(`Scanning ${els.detailName.textContent || "this skill"}…`);
+  await reloadDetail(id);
+  els.detailError.setAttribute("tabindex", "-1");
+  els.detailError.focus();
+  loadSkills();
+}
+
 async function setArchived(archived) {
   if (currentSkillId == null) return;
   try {
@@ -2320,6 +2384,7 @@ els.backBtn.addEventListener("click", () => {
   showDetailView(false);
   loadSkills();
 });
+els.scanAgainBtn.addEventListener("click", scanAgain);
 els.archiveBtn.addEventListener("click", () => setArchived(true));
 els.restoreBtn.addEventListener("click", () => setArchived(false));
 els.deleteBtn.addEventListener("click", deleteSkill);

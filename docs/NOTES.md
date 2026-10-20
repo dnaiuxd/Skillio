@@ -77,6 +77,13 @@ report is kept, and they're identified by a hash of their contents, so two
 unrelated files both named `skill.zip` stay separate rows instead of
 overwriting each other.
 
+**Scan again re-runs a scan from its detail page** with the same source, the
+same mode (skill or MCP Registry) and the same LLM setting the last report
+recorded. It isn't offered for an upload, since that file is deleted when its
+scan ends, so the LLM notices there say to upload the .zip again instead. It
+isn't offered on an archived row either, because a re-scan lands in the
+current log.
+
 **An upload over 100 MB is refused before it is read**, when the request
 says how big it is: the framework writes the whole form to disk before the
 route sees it, so a check in the route alone came after the cost. A body sent
