@@ -155,7 +155,7 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         hideTips, allowTips, triageSummary, triageRank, renderDetailSource,
         fmtDuration, durationLine, filesChip, secondLookHtml, aiReviewLine,
         codeSpans, reviewLine, updateGateControls, renderSkillList, loadSkills, setTab,
-        renderDetail } = sandbox;
+        renderDetail, isQueued } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice, llmNotice,
@@ -451,24 +451,41 @@ test("a source that is present scans rather than nudging", () => {
 
 // --- background scanning ---------------------------------------------------
 // The scan runs on the server and the row carries its progress, so the log —
-// not a flag in this tab — decides whether the form is locked. That is what
-// makes a reload mid-scan pick the state back up instead of losing it.
+// not a flag in this tab — says whether a scan is running. That is what makes
+// a reload mid-scan pick the state back up instead of losing it. The form
+// stays usable throughout: a scan asked for meanwhile joins the queue (K-04).
 const useLlm = sandbox.document.getElementById("use-llm");
 const scanBtn = sandbox.document.getElementById("scan-btn");
+// The test above leaves its POST in flight on purpose; the form is locked
+// only for this tab's own POST, so start this group from an idle one.
+vm.runInContext("posting = false", sandbox);
 
 test("a row is scanning only while the server says so", () => {
   assert.equal(isScanning({ scan_state: "running" }), true);
   assert.equal(isScanning({ scan_state: "done" }), false);
   assert.equal(isScanning({}), false);
   assert.equal(isScanning(null), false);
+  assert.equal(isScanning({ scan_state: "queued" }), false, "waiting isn't running");
+  assert.equal(isQueued({ scan_state: "queued" }), true);
 });
 
-test("a running row locks the form, even on a cold load", () => {
+
+test("a running scan leaves the form usable, and says so even on a cold load", () => {
   // No scan was started in this tab; the state comes purely from the log.
-  syncScanState([{ scan_state: "running" }, { scan_state: "done" }]);
-  assert.equal(scanBtn.disabled, true);
-  assert.equal(scanBtn.textContent, "Scanning…");
-  assert.equal(useLlm.disabled, true);
+  syncScanState([{ name: "strix", scan_state: "running" }, { scan_state: "done" }]);
+  assert.equal(scanBtn.disabled, false, "the next scan should be able to queue");
+  assert.equal(scanBtn.textContent, "Scan");
+  assert.equal(useLlm.disabled, false);
+  assert.equal(scanStatus.hidden, false);
+  assert.equal(scanStatus.textContent, "Scanning strix… New scans wait in the queue.");
+});
+
+test("the status line counts what's waiting", () => {
+  syncScanState([{ name: "a", scan_state: "running" },
+                 { name: "b", scan_state: "queued" }, { name: "c", scan_state: "queued" }]);
+  assert.equal(scanStatus.textContent, "Scanning a… 2 more waiting in the queue.");
+  syncScanState([{ name: "a", scan_state: "done" }]);
+  assert.equal(scanStatus.hidden, true);
 });
 
 test("the form comes back once nothing is running", () => {
@@ -560,7 +577,6 @@ testAsync("a failed poll during a scan schedules another, a little later", async
     await flush();
     assert.ok(timers.length >= 2, "no poll was scheduled after the failure");
     assert.ok(timers.at(-1).ms > first, "the retry should back off");
-    assert.equal(scanBtn.textContent, "Scanning…", "state is unknown, so the form stays locked");
   } finally { restoreTimers(); }
 });
 
@@ -890,6 +906,19 @@ test("every real failure gets its own answer, not the generic one", () => {
   }
 });
 
+// Skillio writes these two itself, on startup, so "SkillSpector's own
+// message" was the wrong thing to call them.
+test("a scan cut off by a restart says Skillio stopped, not SkillSpector", () => {
+  for (const raw of [
+    "The server stopped while this scan was running, so it never finished. Scan it again.",
+    "Skillio stopped while this scan was waiting in the queue, so it didn't run. Scan it again.",
+  ]) {
+    const { lead, hint } = friendlyError(raw);
+    assert.match(lead, /^Skillio stopped before this scan (finished|started)\.$/);
+    assert.doesNotMatch(hint, /SkillSpector/);
+  }
+});
+
 test("the CLI's own line wrapping cannot break a match", () => {
   // rich wraps stderr at ~78 columns, mid-phrase and mid-path, so a newline
   // lands in the middle of the words being matched. This one is wrapped
@@ -1116,6 +1145,11 @@ test("Scan again shows for a path or URL scan", () => {
   assert.equal(scanAgainBtn.hidden, false);
 });
 
+test("Scan again hides while the row waits in the queue", () => {
+  renderDetail(rescannable({ scan_state: "queued" }));
+  assert.equal(scanAgainBtn.hidden, true);
+});
+
 test("Scan again hides for an upload, an archived row, or a scan already running", () => {
   renderDetail(rescannable({ source: "skill.zip · upload:0123456789abcdef0123456789abcdef" }));
   assert.equal(scanAgainBtn.hidden, true, "an upload's file is already deleted");
@@ -1135,7 +1169,7 @@ async function pressScanAgain(row, answer) {
   sandbox.fetch = (url, init) => {
     sent.push({ url, init });
     if (init && init.method === "POST") return answer();
-    return new Promise(() => {});
+    return okJson(/\/skills\/9$/.test(url) ? { ...row, scan_state: "running" } : []);
   };
   try {
     await sandbox.scanAgain();
@@ -1161,6 +1195,88 @@ testAsync("Scan again on a registry row scans it as a registry", async () => {
     () => okJson({ id: 9, scan_state: "running" }));
   assert.deepEqual(JSON.parse(post.init.body),
     { source: "https://r.example/v0/servers", use_llm: false, mcp_registry: true });
+});
+
+// --- K-04: a queued scan waits its turn, and can be taken out --------------
+const unqueueBtn = sandbox.document.getElementById("unqueue-btn");
+
+test("a queued row says queued in the log, with no time or count yet", () => {
+  const restoreRows = installRowButtons();
+  try {
+    renderSkillList([{ id: 3, name: "b", source: "/b", scan_state: "queued",
+                       scan_seconds: 9, summary: { must_review: 2 } }]);
+    const row = skillRows.children[0].innerHTML;
+    assert.match(row, /queued/);
+    assert.doesNotMatch(row, /scanning…/);
+    assert.doesNotMatch(row, /took 9/, "the last scan's time would read as this one's");
+    assert.doesNotMatch(row, /must review/);
+  } finally { restoreRows(); }
+});
+
+test("a queued detail page says it's waiting and offers Remove from queue", () => {
+  renderDetail(rescannable({ scan_state: "queued", report_scanned: 1760000000 }));
+  assert.match(detailText(), /Waiting in the queue/);
+  assert.match(detailText(), /previous scan, on /);
+  assert.equal(unqueueBtn.hidden, false);
+  renderDetail(rescannable({ scan_state: "queued", report: null }));
+  assert.match(detailText(), /Waiting in the queue\. Results will appear here/);
+  renderDetail(rescannable());
+  assert.equal(unqueueBtn.hidden, true);
+});
+
+async function pressUnqueue(answer) {
+  const sent = [];
+  vm.runInContext("currentSkillId = 9", sandbox);
+  detailView.hidden = false;
+  renderDetail(rescannable({ scan_state: "queued" }));
+  const real = sandbox.fetch;
+  sandbox.fetch = (url, init) => {
+    sent.push({ url, init });
+    if (init && init.method === "DELETE") return answer();
+    return okJson(/\/skills\/9$/.test(url) ? rescannable() : []);
+  };
+  try {
+    await sandbox.unqueueScan();
+  } finally {
+    sandbox.fetch = real;
+  }
+  return sent.find((r) => r.init && r.init.method === "DELETE");
+}
+
+testAsync("Remove from queue on a new scan drops its row and goes back to the log", async () => {
+  const del = await pressUnqueue(() => okJson({ deleted: true }));
+  assert.match(del.url, /\/api\/skills\/9\/queue$/);
+  assert.equal(del.init.headers["X-Skillio"], "1");
+  assert.equal(detailView.hidden, true);
+});
+
+testAsync("Remove from queue on a re-scan stays on the old result", async () => {
+  await pressUnqueue(() => okJson({ deleted: false }));
+  assert.equal(detailView.hidden, false);
+  assert.equal(focused, scanAgainBtn, "focus was left on a button that just hid");
+});
+
+testAsync("a Remove from queue that failed says so and stays put", async () => {
+  await pressUnqueue(() => Promise.resolve({
+    ok: false, status: 404, json: async () => ({ detail: "That scan isn't waiting in the queue." }),
+  }));
+  assert.equal(detailView.hidden, false);
+  assert.match(detailError.textContent, /Couldn't take it out of the queue — That scan isn't waiting/);
+  assert.equal(focused, detailError);
+});
+
+testAsync("a scan that lands in the queue says so", async () => {
+  vm.runInContext("posting = false", sandbox);
+  const real = sandbox.fetch;
+  sandbox.fetch = (url, init) => init && init.method === "POST"
+    ? okJson({ id: 4, name: "b", scan_state: "queued" })
+    : new Promise(() => {});
+  try {
+    scanInput.value = "/b";
+    await runScan();
+  } finally { sandbox.fetch = real; }
+  assert.match(scanStatus.textContent, /Queued b\. It starts when the scan ahead of it finishes\./);
+  assert.equal(scanBtn.disabled, false);
 });
 
 testAsync("a Scan again that couldn't start says why and stays put", async () => {
@@ -2302,7 +2418,19 @@ test("no summary, or a running scan, gets no review line", () => {
   assert.equal(reviewLine({ scan_state: "running", summary: { must_review: 2 } }), "");
 });
 
+// An async test that awaits a promise nobody settles leaves the event loop
+// empty, and Node exits 0 without ever printing a result. That once passed a
+// whole suite silently; never again.
+let finished = false;
+process.on("exit", (code) => {
+  if (!finished && code === 0) {
+    console.error("\nAn async test never settled — the suite did not finish.");
+    process.exitCode = 1;
+  }
+});
+
 asyncChain.then(() => {
+  finished = true;
   for (const [name, err] of failures) {
     console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
   }

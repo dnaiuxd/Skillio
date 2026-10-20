@@ -2338,6 +2338,140 @@ def _asgi(method, path, headers=(), host="localhost:9797"):
     return next(m["status"] for m in sent if m["type"] == "http.response.start")
 
 
+class ScanQueue(unittest.TestCase):
+    """K-04: a scan asked for while another runs waits its turn instead of
+    being refused. One runs at a time, since a scan is CPU-bound and two at
+    once each read less. The queue lives in memory, so a restart says the
+    waiting ones didn't run rather than pretending they will."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="skillio_test_")
+        self._patches = [
+            mock.patch.object(storage, "DB_PATH", Path(self.tmp) / "t.db"),
+            # A thread that never runs: the test says when a scan finishes.
+            mock.patch.object(app.threading, "Thread", self._thread),
+        ]
+        for p in self._patches:
+            p.start()
+        storage.init_db()
+        self.started = []
+        app._scan_queue.clear()
+        app._release_scan_slot()
+
+    def tearDown(self):
+        app._scan_queue.clear()
+        app._release_scan_slot()
+        for p in self._patches:
+            p.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _thread(self, target, args, daemon):
+        started = self.started
+
+        class _T:
+            def start(self):
+                started.append(args[0])
+        return _T()
+
+    def _submit(self, source, **kw):
+        return app._submit_scan(source, source, source, False, **kw)
+
+    def _state(self, source):
+        row = storage.find_by_source(source)
+        return row and row["scan_state"]
+
+    def test_a_scan_asked_for_while_one_runs_is_queued_not_refused(self):
+        self.assertEqual(self._submit("a")["scan_state"], "running")
+        self.assertEqual(self._submit("b")["scan_state"], "queued")
+        self.assertEqual(self.started, ["a"])
+
+    def test_the_queue_runs_in_the_order_it_was_asked(self):
+        for s in ("a", "b", "c"):
+            self._submit(s)
+        app._release_scan_slot()            # a finished
+        self.assertEqual(self.started, ["a", "b"])
+        self.assertEqual(self._state("b"), "running")
+        self.assertEqual(self._state("c"), "queued")
+        app._release_scan_slot()            # b finished
+        app._release_scan_slot()            # c finished
+        self.assertEqual(self.started, ["a", "b", "c"])
+        self.assertTrue(app._claim_scan_slot(), "the slot leaked")
+
+    def test_the_queue_holds_five_and_refuses_the_sixth(self):
+        self._submit("run")
+        for i in range(app.MAX_QUEUED_SCANS):
+            self._submit(f"q{i}")
+        with self.assertRaises(HTTPException) as e:
+            self._submit("one-too-many")
+        self.assertEqual(e.exception.status_code, 409)
+        self.assertIn("queue is full", e.exception.detail)
+        self.assertIsNone(storage.find_by_source("one-too-many"))
+
+    def test_the_same_source_twice_is_refused(self):
+        self._submit("a")
+        self._submit("b")
+        for again in ("a", "b"):
+            with self.assertRaises(HTTPException) as e:
+                self._submit(again)
+            self.assertEqual(e.exception.status_code, 409)
+        self.assertEqual(len(app._scan_queue), 1)
+
+    def test_a_queued_rescan_keeps_the_previous_result_on_show(self):
+        storage.upsert_scan(source="b", name="b", score=42, verdict="CAUTION",
+                            report={"x": 1}, error=None, duration=9.0)
+        self._submit("a")
+        row = self._submit("b")
+        self.assertEqual(row["scan_state"], "queued")
+        self.assertEqual(row["score"], 42)
+        self.assertEqual(row["scan_seconds"], 9.0)
+
+    def test_removing_a_new_queued_scan_removes_its_row(self):
+        self._submit("a")
+        row = self._submit("b")
+        self.assertEqual(app.unqueue_scan(row["id"]), {"deleted": True})
+        self.assertIsNone(storage.find_by_source("b"))
+        app._release_scan_slot()
+        self.assertEqual(self.started, ["a"], "a removed scan still ran")
+
+    def test_removing_a_queued_rescan_puts_the_old_result_back(self):
+        storage.upsert_scan(source="b", name="b", score=42, verdict="CAUTION",
+                            report={"x": 1}, error=None)
+        self._submit("a")
+        row = self._submit("b")
+        self.assertEqual(app.unqueue_scan(row["id"]), {"deleted": False})
+        back = storage.find_by_source("b")
+        self.assertEqual((back["scan_state"], back["score"]), ("done", 42))
+
+    def test_removing_a_queued_upload_deletes_its_file(self):
+        d = tempfile.mkdtemp(prefix="skillio_")
+        self._submit("a")
+        row = self._submit("b", cleanup_dir=d)
+        app.unqueue_scan(row["id"])
+        self.assertFalse(os.path.exists(d))
+
+    def test_only_a_queued_scan_can_be_removed(self):
+        row = self._submit("a")
+        with self.assertRaises(HTTPException) as e:
+            app.unqueue_scan(row["id"])
+        self.assertEqual(e.exception.status_code, 404)
+
+    def test_deleting_a_queued_row_takes_it_out_of_the_queue(self):
+        self._submit("a")
+        row = self._submit("b")
+        app.delete_skill(row["id"])
+        app._release_scan_slot()
+        self.assertEqual(self.started, ["a"])
+        self.assertIsNone(storage.find_by_source("b"), "the scan brought it back")
+
+    def test_a_restart_says_a_queued_scan_didnt_run(self):
+        self._submit("a")
+        self._submit("b")
+        storage.sweep_running_scans()
+        row = storage.find_by_source("b")
+        self.assertEqual(row["scan_state"], "done")
+        self.assertIn("didn't run", row["error"])
+
+
 class OtherSitesCantDriveSkillio(unittest.TestCase):
     """B-03: a form on any website can POST to localhost — a multipart form is
     a CORS "simple request", sent before CORS gets a say. A custom header
@@ -2386,7 +2520,7 @@ class OtherSitesCantDriveSkillio(unittest.TestCase):
     def test_the_page_sends_the_header_on_every_write(self):
         js = (Path(__file__).parent.parent / "frontend" / "app.js").read_text()
         writes = re.findall(r'method: "(?:POST|DELETE)"[^}]*}', js)
-        self.assertEqual(len(writes), 7)  # + Scan again (B-10)
+        self.assertEqual(len(writes), 8)  # + Scan again (B-10), Remove from queue (K-04)
         for call in writes:
             self.assertIn("WRITE_HEADERS", call)
 

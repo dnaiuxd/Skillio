@@ -162,9 +162,71 @@ def sweep_running_scans() -> int:
         ("The server stopped while this scan was running, so it never "
          "finished. Scan it again.",),
     )
+    # The queue lives in memory, so it went with the process. A queued scan
+    # never started; say that, rather than leave it waiting on nothing.
+    cur2 = conn.execute(
+        """
+        UPDATE skills
+        SET scan_state = 'done', error = COALESCE(error, ?)
+        WHERE scan_state = 'queued'
+        """,
+        ("Skillio stopped while this scan was waiting in the queue, so it "
+         "didn't run. Scan it again.",),
+    )
     conn.commit()
     conn.close()
-    return cur.rowcount
+    return cur.rowcount + cur2.rowcount
+
+
+def queue_scan(
+    source: str, name: str, target_type: str = "skill"
+) -> tuple[dict[str, Any], bool]:
+    """Mark a scan as waiting its turn. Returns the row and whether it is new.
+
+    Only the state changes on an existing row: its last result, time and
+    error stay on show until the scan actually starts (begin_scan), and come
+    back untouched if it is taken out of the queue.
+    """
+    conn = get_conn()
+    existing = conn.execute(
+        "SELECT id FROM skills WHERE source = ?", (source,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE skills SET scan_state = 'queued', archived = 0 WHERE id = ?",
+            (existing["id"],),
+        )
+        skill_id, created = existing["id"], False
+    else:
+        now = time.time()
+        cur = conn.execute(
+            """
+            INSERT INTO skills (source, name, first_scanned, last_scanned,
+                                score, verdict, status, scan_state, target_type)
+            VALUES (?, ?, ?, ?, NULL, NULL, 'pending', 'queued', ?)
+            """,
+            (source, name, now, now, target_type),
+        )
+        skill_id, created = cur.lastrowid, True
+    conn.commit()
+    row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+    conn.close()
+    return _row_to_dict(row), created
+
+
+def unqueue_scan(skill_id: int, created: bool) -> None:
+    """Undo queue_scan: a row it made goes; an existing row goes back to done."""
+    conn = get_conn()
+    if created:
+        conn.execute("DELETE FROM skills WHERE id = ? AND scan_state = 'queued'",
+                     (skill_id,))
+    else:
+        conn.execute(
+            "UPDATE skills SET scan_state = 'done' WHERE id = ? AND scan_state = 'queued'",
+            (skill_id,),
+        )
+    conn.commit()
+    conn.close()
 
 
 def upsert_scan(

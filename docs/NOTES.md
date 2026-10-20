@@ -54,8 +54,14 @@ and the row carries its own progress: it shows up in the log marked
 where you'd look for it, and reloading the page or closing the tab doesn't
 lose it — the state lives on the server, not in the tab. A re-scan keeps the
 previous score on show, dimmed, until the new one lands; the old answer is
-still the best one available until then. One scan runs at a time — a second
-request gets a 409 rather than queueing. A skill scan times out after 15
+still the best one available until then. One scan runs at a time. A scan is
+CPU-bound, and SkillSpector cuts its own analysis short on a busy CPU, so two
+at once would each read less. A scan asked for meanwhile **waits in a queue**,
+oldest first, up to five; a sixth, or the same source twice, gets a 409. A
+queued row says *queued*, keeps its last result on show, and can be taken out
+from its detail page: a row the queue created goes, and a re-scan's row goes
+back to its last result. The queue lives in memory, so a restart says each
+waiting scan didn't run rather than pretending it still will. A skill scan times out after 15
 minutes; a registry scan gets 30, because the official registry is hundreds of
 servers read in one pass. The skill limit was 5 minutes until a whole
 application repo (usestrix/strix, 545 files) measured 274–304s with the LLM

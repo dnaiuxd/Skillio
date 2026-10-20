@@ -25,6 +25,7 @@ import time
 import unicodedata
 import urllib.parse
 import urllib.request
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -1015,9 +1016,19 @@ def get_skill(skill_id: int) -> dict:
 # so the log shows the scan while it happens instead of only once it lands.
 #
 # One at a time. skillspector with the LLM pass on is the slow case, and
-# running several at once mostly spends the provider quota faster.
+# running several at once mostly spends the provider quota faster. A static
+# scan is CPU-bound, and SkillSpector cuts its own analysis short on a busy
+# CPU — two at once would each read less of what they scan.
+#
+# So a scan asked for while one runs waits in a queue (K-04), oldest first.
+# It is in memory: a restart loses it, and the startup sweep marks the rows
+# that were waiting as not run. Each job is the arguments _start_scan takes,
+# plus the row's id and whether queuing created that row.
 _scan_lock = threading.Lock()
 _scan_active = False
+_running_source: Optional[str] = None
+_scan_queue: deque = deque()
+MAX_QUEUED_SCANS = 5
 
 
 def _claim_scan_slot() -> bool:
@@ -1030,12 +1041,72 @@ def _claim_scan_slot() -> bool:
 
 
 def _release_scan_slot() -> None:
-    global _scan_active
+    """Free the slot, or hand it straight to the next scan in the queue."""
+    global _scan_active, _running_source
     with _scan_lock:
-        _scan_active = False
+        if not _scan_queue:
+            _scan_active = False
+            _running_source = None
+            return
+        job = _scan_queue.popleft()
+    try:
+        _start_scan(job["source"], job["name"], job["target"], job["use_llm"],
+                    job["cleanup_dir"], job["mcp_registry"])
+    except Exception:  # noqa: BLE001 - _start_scan already passed the slot on
+        if job["cleanup_dir"]:
+            shutil.rmtree(job["cleanup_dir"], ignore_errors=True)
 
 
-SCAN_BUSY_DETAIL = "A scan is already running. Wait for it to finish."
+QUEUE_FULL_DETAIL = (
+    f"The queue is full — {MAX_QUEUED_SCANS} scans are already waiting. "
+    "Try again when one has finished."
+)
+ALREADY_QUEUED_DETAIL = "This one is already scanning or waiting in the queue."
+
+
+def _submit_scan(
+    source: str, name: str, target: str, use_llm: bool,
+    cleanup_dir: Optional[str] = None, mcp_registry: bool = False,
+) -> dict:
+    """Start the scan now if the slot is free, otherwise queue it."""
+    global _scan_active
+    if _claim_scan_slot():
+        return _start_scan(source, name, target, use_llm, cleanup_dir, mcp_registry)
+    with _scan_lock:
+        # The scan that held the slot may have finished since the claim.
+        if not _scan_active:
+            _scan_active = True
+            start_now = True
+        else:
+            start_now = False
+            if source == _running_source or any(
+                j["source"] == source for j in _scan_queue
+            ):
+                raise HTTPException(status_code=409, detail=ALREADY_QUEUED_DETAIL)
+            if len(_scan_queue) >= MAX_QUEUED_SCANS:
+                raise HTTPException(status_code=409, detail=QUEUE_FULL_DETAIL)
+            # Written under the lock, so the row says 'queued' before the
+            # job can be popped and begun.
+            row, created = storage.queue_scan(
+                source, name, "mcp_registry" if mcp_registry else "skill"
+            )
+            _scan_queue.append({
+                "id": row["id"], "created": created, "source": source,
+                "name": name, "target": target, "use_llm": use_llm,
+                "cleanup_dir": cleanup_dir, "mcp_registry": mcp_registry,
+            })
+    if start_now:
+        return _start_scan(source, name, target, use_llm, cleanup_dir, mcp_registry)
+    return row
+
+
+def _take_from_queue(skill_id: int) -> Optional[dict]:
+    with _scan_lock:
+        for job in _scan_queue:
+            if job["id"] == skill_id:
+                _scan_queue.remove(job)
+                return job
+    return None
 
 
 # A registry report is not a skill report's size. The live official registry
@@ -1128,6 +1199,8 @@ def _start_scan(
     cleanup_dir: Optional[str] = None, mcp_registry: bool = False,
 ) -> dict:
     """Claim the row, hand the work to a thread, and return the row at once."""
+    global _running_source
+    _running_source = source
     try:
         row = storage.begin_scan(
             source, name, "mcp_registry" if mcp_registry else "skill"
@@ -1156,9 +1229,7 @@ def scan(req: ScanRequest) -> dict:
     # every registry scan in the log under the bare word "servers".
     name = "MCP Registry" if req.mcp_registry else _derive_name(source)
 
-    if not _claim_scan_slot():
-        raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
-    return _start_scan(
+    return _submit_scan(
         source, name, source, req.use_llm, mcp_registry=req.mcp_registry
     )
 
@@ -1221,9 +1292,7 @@ async def scan_upload(
         name = _derive_name(filename)
         source = f"{filename} · upload:{digest.hexdigest()[:32]}"
 
-        if not _claim_scan_slot():
-            raise HTTPException(status_code=409, detail=SCAN_BUSY_DETAIL)
-        row = _start_scan(source, name, tmppath, use_llm, cleanup_dir=tmpdir)
+        row = _submit_scan(source, name, tmppath, use_llm, cleanup_dir=tmpdir)
         handed_off = True
         return row
     finally:
@@ -1250,8 +1319,25 @@ def archive_skill(skill_id: int, req: ArchiveRequest) -> dict:
     return _triaged(skill)
 
 
+# Taking a scan out of the queue undoes queuing it: a row the queue created
+# goes, and a re-scan's row goes back to its last result.
+@app.delete("/api/skills/{skill_id}/queue")
+def unqueue_scan(skill_id: int) -> dict:
+    job = _take_from_queue(skill_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="That scan isn't waiting in the queue.")
+    if job["cleanup_dir"]:
+        shutil.rmtree(job["cleanup_dir"], ignore_errors=True)
+    storage.unqueue_scan(skill_id, job["created"])
+    return {"deleted": job["created"]}
+
+
 @app.delete("/api/skills/{skill_id}")
 def delete_skill(skill_id: int) -> dict:
+    # Out of the queue first, or its turn would bring the row back.
+    job = _take_from_queue(skill_id)
+    if job and job["cleanup_dir"]:
+        shutil.rmtree(job["cleanup_dir"], ignore_errors=True)
     ok = storage.delete_skill(skill_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Skill not found")

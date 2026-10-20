@@ -30,6 +30,7 @@ const els = {
   emptyState: document.getElementById("empty-state"),
   backBtn: document.getElementById("back-btn"),
   scanAgainBtn: document.getElementById("scan-again-btn"),
+  unqueueBtn: document.getElementById("unqueue-btn"),
   archiveBtn: document.getElementById("archive-btn"),
   restoreBtn: document.getElementById("restore-btn"),
   deleteBtn: document.getElementById("delete-btn"),
@@ -364,7 +365,7 @@ function fmtDuration(seconds) {
 // A failed scan says so here, because a failed RE-scan keeps the previous
 // verdict on show and the row would otherwise look like a fresh result.
 function durationLine(s) {
-  if (isScanning(s)) return "";
+  if (isPending(s)) return "";
   if (s.error) {
     return typeof s.scan_seconds === "number"
       ? `<span class="scan-duration">failed after ${fmtDuration(s.scan_seconds)}</span>`
@@ -382,7 +383,7 @@ function durationLine(s) {
 // the same reason as durationLine.
 function reviewLine(s) {
   const sum = s && s.summary;
-  if (isScanning(s) || !sum || typeof sum.must_review !== "number") return "";
+  if (isPending(s) || !sum || typeof sum.must_review !== "number") return "";
   const n = sum.must_review.toLocaleString();
   const must = sum.must_review > 0
     ? `<span class="triage-must--some">${n} must review</span>`
@@ -860,9 +861,18 @@ function isScanning(skill) {
   return !!skill && skill.scan_state === "running";
 }
 
-// The scan runs on the server and the row carries its progress, so the log is
-// the source of truth for "is a scan happening" — not a flag in this tab. That
-// is what makes a reload mid-scan pick up where it left off.
+// Asked for while another scan ran, and waiting its turn on the server (K-04).
+function isQueued(skill) {
+  return !!skill && skill.scan_state === "queued";
+}
+
+// Either way the row's time and counts are the previous scan's, not this one's.
+function isPending(skill) {
+  return isScanning(skill) || isQueued(skill);
+}
+
+// Locked only while this tab's own POST is in flight. A scan running on the
+// server no longer locks it: the next one asked for joins the queue (K-04).
 function setScanControls(busy) {
   for (const el of [els.scanInput, els.useLlm, els.scanBtn, els.fileInput,
                     els.fileClear]) {
@@ -894,8 +904,8 @@ async function pollScan() {
   }
 }
 
-// The scan's state is unknown while the server is away, so the form stays
-// locked; the next answer decides.
+// The scan's state is unknown while the server is away; the next answer
+// decides, so keep asking, a little less often each time.
 function pollFailed() {
   if (!scanning) return;
   pollFailures++;
@@ -923,13 +933,26 @@ async function reloadDetail(id) {
   }
 }
 
+// The scan runs on the server and the row carries its progress, so the log is
+// the source of truth for "is a scan happening" — not a flag in this tab. That
+// is what makes a reload mid-scan pick up where it left off.
 function syncScanState(skills) {
   pollFailures = 0;
-  scanning = skills.some(isScanning);
-  setScanControls(scanning);
+  const running = skills.find(isScanning);
+  const waiting = skills.filter(isQueued).length;
+  scanning = !!running || waiting > 0;
+  if (!posting) setScanControls(false);
   refreshOpenDetail(skills);
   clearTimeout(pollTimer);
   if (scanning) {
+    if (running) {
+      showScanStatus(
+        `Scanning ${running.name || "a skill"}… ` +
+          (waiting
+            ? `${waiting} more waiting in the queue.`
+            : "New scans wait in the queue.")
+      );
+    }
     pollTimer = setTimeout(pollScan, POLL_MS);
     return;
   }
@@ -1023,7 +1046,7 @@ function renderSkillList(skills) {
 
   for (const s of skills) {
     const tr = document.createElement("tr");
-    tr.className = isScanning(s) ? "skill-row skill-row--scanning" : "skill-row";
+    tr.className = isPending(s) ? "skill-row skill-row--scanning" : "skill-row";
 
     const sevWord = severityBand(s);
     const sevClass = bandClass(sevWord);
@@ -1033,6 +1056,8 @@ function renderSkillList(skills) {
     // everything else is quiet text.
     const verdictCell = isScanning(s)
       ? `<span class="scanning-tag"><span class="scanning-dot" aria-hidden="true"></span>scanning…</span>`
+      : isQueued(s)
+      ? `<span class="scanning-tag">queued</span>`
       : isHighRisk(s)
       ? `<span class="pill pill-critical">${escapeHtml(verdictText)}</span>`
       : `<span class="verdict-text">${escapeHtml(verdictText)}</span>`;
@@ -1110,7 +1135,7 @@ function updateGateControls(skill) {
   const offered = !archived && !decided;
   const why = !offered
     ? ""
-    : isScanning(skill)
+    : isPending(skill)
     ? "You can decide once the scan finishes."
     : !skill.report
     ? "There's no report to decide on — this scan didn't finish."
@@ -1304,6 +1329,16 @@ function coverageNotice(report) {
 // and mentions the registry, and it is the host check that has the useful
 // answer, so that entry comes first.
 const SCAN_FAILURES = [
+  {
+    // Skillio's own words, written on startup for a scan the restart cut off
+    // (storage.sweep_running_scans) — nothing SkillSpector said.
+    when: /^(?:The server|Skillio) stopped while this scan was (running|waiting in the queue)/,
+    lead: (m) =>
+      `Skillio stopped before this scan ${m[1] === "running" ? "finished" : "started"}.`,
+    hint:
+      "Nothing went wrong with the skill: Skillio was quit or restarted " +
+      "partway. Scan it again.",
+  },
   {
     when: /not in the allowed hosts list/i,
     lead: "SkillSpector only downloads from a few trusted sites, and that isn't one of them.",
@@ -1633,7 +1668,7 @@ function humanize(str) {
 }
 
 async function runScan() {
-  if (scanning || posting) return;
+  if (posting) return;
   const source = els.scanInput.value.trim();
   if (!stagedFile && !source) {
     showSourceError("Enter a Git URL, path, or .zip — or choose a file below.");
@@ -1679,7 +1714,9 @@ async function runScan() {
     // The POST now returns the row, not the result: the scan is running on
     // the server. Remember which row to open, and let the log carry it.
     const skill = await res.json();
-    pendingScanId = skill && skill.id != null ? skill.id : null;
+    // A queued scan isn't the one that will land next, so don't open it then.
+    pendingScanId = skill && skill.id != null && !isQueued(skill) ? skill.id : null;
+    if (isQueued(skill)) showScanStatus(queuedMessage(skill.name || label));
     clearStagedFile();
     els.scanInput.value = "";
     updateSourceType();
@@ -1688,10 +1725,14 @@ async function runScan() {
     setTab(false);
   } catch (e) {
     showScanStatus(requestMessage(e, "Couldn't start the scan"), true);
-    setScanControls(false);
   } finally {
     posting = false;
+    setScanControls(false);
   }
+}
+
+function queuedMessage(name) {
+  return `Queued ${name}. It starts when the scan ahead of it finishes.`;
 }
 
 // Two things go wrong with a request from this page and they need different
@@ -1759,7 +1800,8 @@ function renderDetail(skill) {
                     skill.report.metadata.llm_requested),
         mcp_registry: skill.target_type === "mcp_registry",
       };
-  els.scanAgainBtn.hidden = !rescan || isScanning(skill);
+  els.scanAgainBtn.hidden = !rescan || isPending(skill);
+  els.unqueueBtn.hidden = !isQueued(skill);
   updateGateControls(skill);
   detailScanState = skill.scan_state || "done";
 
@@ -1803,6 +1845,15 @@ function renderDetail(skill) {
             (skill.report_scanned ? `, on ${fmtDate(skill.report_scanned)}` : "") +
             ". This page updates when it finishes."
         : "Scan in progress. Results will appear here when it finishes."
+    );
+  } else if (isQueued(skill)) {
+    notices.push(
+      skill.report
+        ? "Waiting in the queue. It starts when the scan ahead of it finishes; " +
+            "until then the results below are from the previous scan" +
+            (skill.report_scanned ? `, on ${fmtDate(skill.report_scanned)}` : "") +
+            "."
+        : "Waiting in the queue. Results will appear here once it has run."
     );
   }
   // SkillSpector fails closed: a LOW band that would normally read SAFE is
@@ -2245,8 +2296,10 @@ function isUploadSource(src) {
 // with its "Re-scan in progress" notice — focus goes there, since the button
 // that had it is now hidden.
 async function scanAgain() {
-  if (currentSkillId == null || !rescan || scanning || posting) return;
+  if (currentSkillId == null || !rescan || posting) return;
   const id = currentSkillId;
+  const name = els.detailName.textContent || "this skill";
+  let row = null;
   posting = true;
   try {
     const res = await fetch(`${API}/scan`, {
@@ -2263,16 +2316,53 @@ async function scanAgain() {
       }
       throw new Error(detail);
     }
+    row = await res.json().catch(() => null);
   } catch (e) {
     showActionError(requestMessage(e, "Couldn't start the scan"));
     return;
   } finally {
     posting = false;
   }
-  showScanStatus(`Scanning ${els.detailName.textContent || "this skill"}…`);
+  showScanStatus(isQueued(row) ? queuedMessage(name) : `Scanning ${name}…`);
   await reloadDetail(id);
   els.detailError.setAttribute("tabindex", "-1");
   els.detailError.focus();
+  loadSkills();
+}
+
+// Undoes the queuing: a scan that made a new row takes the row with it, so
+// the page goes back to the log; a re-scan's row keeps its last result.
+async function unqueueScan() {
+  if (currentSkillId == null) return;
+  const id = currentSkillId;
+  let deleted = false;
+  try {
+    const res = await fetch(`${API}/skills/${id}/queue`, {
+      method: "DELETE",
+      headers: WRITE_HEADERS,
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        detail = (await res.json()).detail || detail;
+      } catch (_) {
+        /* non-JSON error body */
+      }
+      throw new Error(detail);
+    }
+    deleted = !!(await res.json()).deleted;
+  } catch (e) {
+    showActionError(requestMessage(e, "Couldn't take it out of the queue"));
+    return;
+  }
+  if (deleted) {
+    currentSkillId = null;
+    showDetailView(false);
+  } else {
+    await reloadDetail(id);
+    // The button that had focus is hidden now; Scan again took its place.
+    if (!els.scanAgainBtn.hidden) els.scanAgainBtn.focus();
+  }
   loadSkills();
 }
 
@@ -2385,6 +2475,7 @@ els.backBtn.addEventListener("click", () => {
   loadSkills();
 });
 els.scanAgainBtn.addEventListener("click", scanAgain);
+els.unqueueBtn.addEventListener("click", unqueueScan);
 els.archiveBtn.addEventListener("click", () => setArchived(true));
 els.restoreBtn.addEventListener("click", () => setArchived(false));
 els.deleteBtn.addEventListener("click", deleteSkill);
@@ -2439,7 +2530,7 @@ els.dropZone.addEventListener("dragleave", (e) => {
 els.dropZone.addEventListener("drop", (e) => {
   e.preventDefault();
   els.dropZone.classList.remove("drop-zone--over");
-  if (scanning) return;
+  if (posting) return;
   stageFile(e.dataTransfer.files && e.dataTransfer.files[0]);
 });
 
