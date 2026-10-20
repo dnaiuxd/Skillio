@@ -81,7 +81,8 @@ const el = (id) => {
   });
   Object.defineProperty(node, "innerHTML", {
     get: () => html,
-    set(v) { html = String(v); },
+    // Replaces the children too, as a real one does — the log is emptied this way.
+    set(v) { html = String(v); node.children.length = 0; },
   });
   return node;
 };
@@ -117,6 +118,8 @@ const sandbox = {
     addEventListener() {},
     documentElement: { dataset: {} },
     body: el(),
+    // Whatever the stub's focus() last landed on, as a real document reports.
+    get activeElement() { return focused; },
   },
   localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
   // Resolve nothing: checkHealth() and loadSkills() fire on load and must not
@@ -151,7 +154,8 @@ const { severityBand, bandClass, severityWord, coverageNotice, llmNotice,
         makeUpdateClose, versionOf, attachTip, makeHelpButton,
         hideTips, allowTips, triageSummary, triageRank, renderDetailSource,
         fmtDuration, durationLine, filesChip, secondLookHtml, aiReviewLine,
-        codeSpans } = sandbox;
+        codeSpans, updateGateControls, renderSkillList, loadSkills, setTab,
+        renderDetail } = sandbox;
 
 for (const [name, fn] of Object.entries({
   severityBand, bandClass, severityWord, coverageNotice, llmNotice,
@@ -162,7 +166,8 @@ for (const [name, fn] of Object.entries({
   requestMessage, vLabel, showSkillioBanner, renderSkillioUpdate,
   dismissSkillioBanner, fetchSkillioUpdate, makeUpdateClose,
   triageSummary, triageRank, fmtDuration, durationLine, filesChip,
-  secondLookHtml, aiReviewLine, codeSpans,
+  secondLookHtml, aiReviewLine, codeSpans, updateGateControls,
+  renderSkillList, loadSkills, setTab, renderDetail,
 })) {
   assert.equal(typeof fn, "function", `app.js no longer exports ${name}`);
 }
@@ -178,6 +183,17 @@ function test(name, fn) {
     failures.push([name, e]);
   }
 }
+// Async tests run one after another, after every sync test has finished, so
+// a stubbed fetch or timer in one can't leak into the next one mid-flight.
+let asyncChain = Promise.resolve();
+function testAsync(name, fn) {
+  asyncChain = asyncChain.then(fn).then(
+    () => { passed++; },
+    (e) => { failures.push([name, e]); }
+  );
+}
+// Lets every pending promise inside app.js settle.
+const flush = () => new Promise((r) => setImmediate(r));
 const skill = (score, severity, rec = "CAUTION") => ({
   score,
   verdict: rec,
@@ -288,6 +304,42 @@ test("rejected displays as 'not approved' without changing the stored value", ()
   assert.equal(gateStatusLabel("approved"), "approved");
   assert.equal(gateStatusLabel("pending"), "pending");
   assert.equal(gateStatusLabel(undefined), "pending");
+});
+
+// --- B-08: nothing to decide on, no decision buttons ------------------------
+const gateApprove = sandbox.document.querySelector('.gate-btn[data-status="approved"]');
+const gateReject = sandbox.document.querySelector('.gate-btn[data-status="rejected"]');
+const gateNote = sandbox.document.getElementById("gate-note");
+
+test("a scan with no report offers no Install / Do Not Install, and says why", () => {
+  updateGateControls({ archived: false, status: "pending", report: null, error: "boom" });
+  assert.equal(gateApprove.hidden, true);
+  assert.equal(gateReject.hidden, true);
+  assert.equal(gateNote.hidden, false);
+  assert.match(gateNote.textContent, /no report/i);
+});
+
+test("a running scan offers no decision until it lands", () => {
+  updateGateControls({ archived: false, status: "pending", report: {}, scan_state: "running" });
+  assert.equal(gateApprove.hidden, true);
+  assert.equal(gateReject.hidden, true);
+  assert.equal(gateNote.hidden, false);
+  assert.match(gateNote.textContent, /finishes/);
+});
+
+test("a failed RE-scan keeps the gate: the kept report is what you decide on", () => {
+  updateGateControls({ archived: false, status: "pending", report: {}, error: "boom", report_scanned: 1 });
+  assert.equal(gateApprove.hidden, false);
+  assert.equal(gateReject.hidden, false);
+  assert.equal(gateNote.hidden, true);
+});
+
+test("a decided or archived row says nothing extra", () => {
+  updateGateControls({ archived: true, status: "pending", report: null });
+  assert.equal(gateNote.hidden, true);
+  updateGateControls({ archived: false, status: "approved", report: {}, scan_state: "running" });
+  assert.equal(gateNote.hidden, true);
+  assert.equal(gateApprove.hidden, true);
 });
 
 // --- severity counting -----------------------------------------------------
@@ -431,6 +483,171 @@ test("an empty log leaves the form usable", () => {
   syncScanState([]);
   assert.equal(scanBtn.disabled, false);
   assert.equal(scanBtn.textContent, "Scan");
+});
+
+// --- B-06: a poll must not throw keyboard focus away ------------------------
+// The stub's querySelector finds nothing, so rows get a real .row-open node
+// here — the same one app.js wires up and focuses.
+function installRowButtons() {
+  const realCreate = sandbox.document.createElement;
+  sandbox.document.createElement = (tag) => {
+    const n = realCreate(tag);
+    if (tag === "tr") {
+      const btn = el("row-open");
+      btn.className = "row-open";
+      n.openBtn = btn;
+      n.querySelector = (sel) => (sel === ".row-open" ? btn : null);
+    }
+    return n;
+  };
+  return () => { sandbox.document.createElement = realCreate; };
+}
+function withRowButtons(fn) {
+  const restore = installRowButtons();
+  try { return fn(); } finally { restore(); }
+}
+const skillRows = sandbox.document.getElementById("skill-rows");
+const row = (id, extra = {}) => ({ id, name: `s${id}`, source: `/tmp/s${id}`, status: "pending", ...extra });
+
+test("focus on a log row survives the row being rebuilt", () => {
+  withRowButtons(() => {
+    renderSkillList([row(1, { scan_state: "running" }), row(2)]);
+    skillRows.children[1].openBtn.focus();
+    renderSkillList([row(1, { score: 10 }), row(2)]);
+    assert.equal(focused, skillRows.children[1].openBtn, "focus should land on row 2's new button");
+  });
+});
+
+test("an unchanged poll leaves the rows alone, so nothing is re-announced", () => {
+  withRowButtons(() => {
+    renderSkillList([row(3, { scan_state: "running" }), row(4)]);
+    const before = skillRows.children[0];
+    renderSkillList([row(3, { scan_state: "running" }), row(4)]);
+    assert.equal(skillRows.children[0], before);
+  });
+});
+
+test("focus elsewhere is not pulled into the log", () => {
+  withRowButtons(() => {
+    renderSkillList([row(5)]);
+    scanInput.focus();
+    renderSkillList([row(5, { score: 1 })]);
+    assert.equal(focused, scanInput);
+  });
+});
+
+// --- B-07: one failed poll must not strand the form on "Scanning…" ----------
+function stubTimers() {
+  const calls = [];
+  sandbox.setTimeout = (fn, ms) => { calls.push({ fn, ms }); return calls.length; };
+  sandbox.clearTimeout = () => {};
+  return calls;
+}
+function restoreTimers() {
+  sandbox.setTimeout = setTimeout;
+  sandbox.clearTimeout = clearTimeout;
+  sandbox.fetch = () => new Promise(() => {});
+}
+const okJson = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
+
+testAsync("a failed poll during a scan schedules another, a little later", async () => {
+  const timers = stubTimers();
+  try {
+    syncScanState([{ scan_state: "running" }]);
+    const first = timers.at(-1).ms;
+    sandbox.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+    await loadSkills();
+    await flush();
+    assert.ok(timers.length >= 2, "no poll was scheduled after the failure");
+    assert.ok(timers.at(-1).ms > first, "the retry should back off");
+    assert.equal(scanBtn.textContent, "Scanning…", "state is unknown, so the form stays locked");
+  } finally { restoreTimers(); }
+});
+
+testAsync("the poll recovers once the server answers again", async () => {
+  const timers = stubTimers();
+  const restoreRows = installRowButtons();
+  try {
+    syncScanState([{ scan_state: "running" }]);
+    sandbox.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+    await loadSkills();
+    await flush();
+    sandbox.fetch = () => okJson([{ id: 1, scan_state: "done" }]);
+    timers.at(-1).fn();
+    await flush(); await flush();
+    assert.equal(scanBtn.textContent, "Scan");
+    assert.equal(scanBtn.disabled, false);
+  } finally { restoreRows(); restoreTimers(); }
+});
+
+testAsync("switching to Archived mid-scan keeps the scan polled", async () => {
+  const timers = stubTimers();
+  const urls = [];
+  try {
+    sandbox.fetch = (url) => {
+      urls.push(url);
+      return okJson(/archived=true/.test(url) ? [] : [{ id: 1, scan_state: "running" }]);
+    };
+    syncScanState([{ scan_state: "running" }]);
+    setTab(true);
+    await flush(); await flush();
+    const before = timers.length;
+    timers.at(-1).fn();
+    await flush(); await flush();
+    assert.ok(urls.some((u) => /archived=false/.test(u)), "the current log was never asked");
+    assert.ok(timers.length > before, "polling stopped on the Archived tab");
+    assert.equal(skillRows.children.length, 0, "the archived list must not be overwritten");
+  } finally {
+    sandbox.fetch = () => okJson([]);
+    setTab(false);
+    await flush(); await flush();
+    restoreTimers();
+  }
+});
+
+// --- B-09: the detail page knows a re-scan is running -----------------------
+const detailError = sandbox.document.getElementById("detail-error");
+const detailView = sandbox.document.getElementById("detail-view");
+const detailText = () => detailError.children.map((c) => c.textContent).join("\n");
+
+test("an open detail page says a re-scan is in progress, and from when the results are", () => {
+  renderDetail({ id: 9, name: "x", source: "/tmp/x", status: "pending", archived: false,
+                 scan_state: "running", report: {}, report_scanned: 1760000000 });
+  assert.equal(detailError.hidden, false);
+  assert.ok(detailError.classList.contains("detail-error--warn"));
+  assert.match(detailText(), /Re-scan in progress/);
+  assert.match(detailText(), /previous scan, on /);
+});
+
+test("a first scan still running says results will appear here", () => {
+  renderDetail({ id: 9, name: "x", source: "/tmp/x", status: "pending", archived: false,
+                 scan_state: "running", report: null });
+  assert.match(detailText(), /Scan in progress/);
+});
+
+testAsync("the open detail page re-renders when its row's scan lands", async () => {
+  const timers = stubTimers();
+  const restoreRows = installRowButtons();
+  try {
+    sandbox.fetch = (url) => okJson(/\/skills\/9$/.test(url)
+      ? { id: 9, name: "x", source: "/tmp/x", status: "pending", archived: false,
+          scan_state: "running", report: {}, report_scanned: 1 }
+      : [{ id: 9, scan_state: "running" }]);
+    await sandbox.openDetail(9);
+    assert.match(detailText(), /Re-scan in progress/);
+    syncScanState([{ id: 9, scan_state: "running" }]);
+    sandbox.fetch = (url) => okJson(/\/skills\/9$/.test(url)
+      ? { id: 9, name: "x", source: "/tmp/x", status: "pending", archived: false,
+          scan_state: "done", report: {} }
+      : [{ id: 9, scan_state: "done" }]);
+    timers.at(-1).fn();
+    await flush(); await flush(); await flush();
+    assert.doesNotMatch(detailText(), /in progress/);
+  } finally {
+    detailView.hidden = true;
+    restoreRows();
+    restoreTimers();
+  }
 });
 
 // --- update check ----------------------------------------------------------
@@ -1814,9 +2031,11 @@ test("a failed re-scan says the results are from the last scan that worked", () 
   assert.ok(!texts().some((t) => /last scan that worked/.test(t)));
 });
 
-for (const [name, err] of failures) {
-  console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
-}
+asyncChain.then(() => {
+  for (const [name, err] of failures) {
+    console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
+  }
 
-console.log(`\n${passed} passed, ${failures.length} failed`);
-process.exit(failures.length ? 1 : 0);
+  console.log(`\n${passed} passed, ${failures.length} failed`);
+  process.exit(failures.length ? 1 : 0);
+});
