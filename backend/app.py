@@ -900,6 +900,10 @@ def _scan_worker(
     # one whose duration answers "is it still slow?".
     started = time.monotonic()
     elapsed = lambda: round(time.monotonic() - started, 1)  # noqa: E731
+    # Passed on every path, failure included: only an insert reads it — the
+    # row is normally there from begin_scan — but a row deleted mid-scan
+    # would otherwise come back from the error path as a plain skill.
+    kind = "mcp_registry" if mcp_registry else "skill"
     try:
         try:
             report, fingerprint = _run_scan(target, use_llm, mcp_registry)
@@ -925,20 +929,20 @@ def _scan_worker(
             storage.upsert_scan(
                 source=source, name=name, score=None, verdict=None,
                 report=None, error=str(exc), duration=elapsed(),
+                target_type=kind,
             )
             return
         score, verdict = _extract_score_and_verdict(report)
         storage.upsert_scan(
             source=source, name=name, score=score, verdict=verdict,
             report=report, error=None, fingerprint=fingerprint,
-            target_type="mcp_registry" if mcp_registry else "skill",
-            duration=elapsed(),
+            target_type=kind, duration=elapsed(),
         )
     except Exception as exc:  # noqa: BLE001 - the row must never stay 'running'
         storage.upsert_scan(
             source=source, name=name, score=None, verdict=None,
             report=None, error=f"Scan failed unexpectedly: {exc}",
-            duration=elapsed(),
+            duration=elapsed(), target_type=kind,
         )
     finally:
         if cleanup_dir:

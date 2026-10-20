@@ -1796,6 +1796,24 @@ test("a finding's header row wraps and its long words break", () => {
   }
 });
 
+// --- B-01: a failed re-scan keeps the last result ---------------------------
+test("a failed scan says so under the date", () => {
+  assert.match(durationLine({ error: "x", scan_seconds: 900 }), /failed after 15m 00s/);
+  assert.match(durationLine({ error: "x" }), />failed</);
+  assert.match(durationLine({ scan_seconds: 900 }), /took 15m 00s/);
+});
+
+test("a failed re-scan says the results are from the last scan that worked", () => {
+  const box = sandbox.document.getElementById("detail-error");
+  const texts = () => box.children.map((c) => c.textContent);
+  renderScanError("Scan timed out after 900s", 1760000000);
+  assert.ok(texts().some((t) => /from the last scan that worked, on /.test(t)));
+  renderScanError("Scan timed out after 900s", null);
+  assert.ok(texts().includes("The results below are from the last scan that worked."));
+  renderScanError("Scan timed out after 900s");
+  assert.ok(!texts().some((t) => /last scan that worked/.test(t)));
+});
+
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
 }

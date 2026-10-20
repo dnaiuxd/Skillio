@@ -2172,6 +2172,18 @@ main {
   margin: 0;
 }
 
+/* A failed re-scan's box also carries the kept report's notices. Quiet like
+   .detail-error-hint, and pre-line because coverageNotice puts real newlines
+   in its text and the fail box sets white-space: normal. (0,2,0), to beat
+   the plain notice rule at any source position. */
+.detail-error--fail .detail-error-notice {
+  margin: 8px 0 0;
+  white-space: pre-line;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
 .detail-error-notice + .detail-error-notice {
   margin-top: 1.5em;
 }

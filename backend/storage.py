@@ -34,7 +34,10 @@ _SCHEMA = """
         target_type TEXT NOT NULL DEFAULT 'skill',
         -- Wall-clock seconds the last scan took, success or failure. NULL for
         -- rows scanned before this was recorded, and while a re-scan runs.
-        scan_seconds REAL
+        scan_seconds REAL,
+        -- When the stored report was made. Not last_scanned: a re-scan moves
+        -- that when it starts, and a failed one keeps the old report.
+        report_scanned REAL
     )
 """
 
@@ -46,7 +49,15 @@ _ADDED_COLUMNS = (
     ("scan_state", "TEXT NOT NULL DEFAULT 'done'"),
     ("target_type", "TEXT NOT NULL DEFAULT 'skill'"),
     ("scan_seconds", "REAL"),
+    ("report_scanned", "REAL"),
 )
+
+# Filled in once, when the column is added: for a row that has a report and
+# predates the column, its last scan is the one that made the report.
+_BACKFILL = {
+    "report_scanned":
+        "UPDATE skills SET report_scanned = last_scanned WHERE report_json IS NOT NULL",
+}
 
 
 def get_conn() -> sqlite3.Connection:
@@ -61,6 +72,9 @@ def get_conn() -> sqlite3.Connection:
     for column, ddl in _ADDED_COLUMNS:
         if column not in cols:
             conn.execute(f"ALTER TABLE skills ADD COLUMN {column} {ddl}")
+            if column in _BACKFILL:
+                conn.execute(_BACKFILL[column])
+                conn.commit()
     return conn
 
 
@@ -181,11 +195,19 @@ def upsert_scan(
             and fingerprint != existing["report_fingerprint"]
         )
         stale_gate = changed and existing["status"] != "pending"
+        # A failed re-scan keeps the last report, score and verdict: they are
+        # still the best answer, and the gate may have approved exactly them.
+        # The error goes beside them, not over them.
+        keep = 1 if report is None else 0
         conn.execute(
             """
             UPDATE skills
-            SET name = ?, last_scanned = ?, score = ?, verdict = ?,
-                report_json = ?, error = ?, archived = 0,
+            SET name = ?, last_scanned = ?,
+                score = CASE WHEN ? THEN score ELSE ? END,
+                verdict = CASE WHEN ? THEN verdict ELSE ? END,
+                report_json = CASE WHEN ? THEN report_json ELSE ? END,
+                report_scanned = CASE WHEN ? THEN report_scanned ELSE ? END,
+                error = ?, archived = 0,
                 scan_state = 'done', scan_seconds = ?,
                 -- A failed scan carries no fingerprint; keep the last known
                 -- good one or the next real change would not be detected.
@@ -195,7 +217,8 @@ def upsert_scan(
             WHERE id = ?
             """,
             (
-                name, now, score, verdict, report_json, error, duration,
+                name, now, keep, score, keep, verdict, keep, report_json,
+                keep, now, error, duration,
                 fingerprint,
                 1 if stale_gate else 0,
                 1 if stale_gate else 0,
@@ -209,11 +232,12 @@ def upsert_scan(
             INSERT INTO skills (source, name, first_scanned, last_scanned,
                                  score, verdict, status, report_json, error,
                                  report_fingerprint, scan_state, target_type,
-                                 scan_seconds)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'done', ?, ?)
+                                 scan_seconds, report_scanned)
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, 'done', ?, ?, ?)
             """,
             (source, name, now, now, score, verdict, report_json, error,
-             fingerprint, target_type, duration),
+             fingerprint, target_type, duration,
+             now if report is not None else None),
         )
         skill_id = cur.lastrowid
     conn.commit()

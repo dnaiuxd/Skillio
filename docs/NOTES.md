@@ -249,3 +249,10 @@ Data lives in `backend/skillio.db` (SQLite, git-ignored) — delete it to reset
 the log. Deleting a scan runs `VACUUM`, because SQLite keeps freed pages
 inside the file and reuses them rather than returning them to the OS, and
 "delete permanently" should leave nothing behind — including the space.
+
+**A failed re-scan keeps the last result.** The error is stored beside the
+previous score, verdict and report, not over them: they are still the best
+answer, and the gate may have approved exactly that report. `report_scanned`
+records when the kept report was made, since `last_scanned` moves the moment
+a re-scan starts. The detail page says the results are from the last scan
+that worked, and on when; the log's duration line reads "failed after …".

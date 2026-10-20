@@ -343,8 +343,15 @@ function fmtDuration(seconds) {
 // time would read as this one's — and a dash for rows from before durations
 // were recorded, spelled out for screen readers since a dash alone says
 // nothing.
+// A failed scan says so here, because a failed RE-scan keeps the previous
+// verdict on show and the row would otherwise look like a fresh result.
 function durationLine(s) {
   if (isScanning(s)) return "";
+  if (s.error) {
+    return typeof s.scan_seconds === "number"
+      ? `<span class="scan-duration">failed after ${fmtDuration(s.scan_seconds)}</span>`
+      : `<span class="scan-duration">failed</span>`;
+  }
   if (typeof s.scan_seconds !== "number") {
     return `<span class="scan-duration"><span aria-hidden="true">—</span><span class="visually-hidden">duration not recorded</span></span>`;
   }
@@ -1388,7 +1395,10 @@ function appendNote(parent, note, action) {
   parent.appendChild(strong);
 }
 
-function renderScanError(raw) {
+// `keptFrom`: when a RE-scan failed, the report still on show is the last one
+// that worked — say so and when, or the findings below read as this scan's.
+// undefined means no report was kept; null means kept, date unknown.
+function renderScanError(raw, keptFrom) {
   resetDetailError();
   els.detailError.classList.add("detail-error--fail");
   els.detailError.hidden = false;
@@ -1404,6 +1414,15 @@ function renderScanError(raw) {
     hintEl.className = "detail-error-hint";
     hintEl.textContent = hint;
     els.detailError.appendChild(hintEl);
+  }
+
+  if (keptFrom !== undefined) {
+    const keptEl = document.createElement("p");
+    keptEl.className = "detail-error-hint";
+    keptEl.textContent =
+      "The results below are from the last scan that worked" +
+      (typeof keptFrom === "number" ? `, on ${fmtDate(keptFrom)}.` : ".");
+    els.detailError.appendChild(keptEl);
   }
 
   const text = String(raw || "").trim();
@@ -1635,7 +1654,10 @@ function renderDetail(skill) {
   const coverage = coverageNotice(skill.report);
   if (coverage) notices.push(coverage);
   if (skill.error) {
-    renderScanError(skill.error);
+    renderScanError(skill.error, skill.report ? skill.report_scanned ?? null : undefined);
+    // The kept report's own notices still hold — an incomplete read must not
+    // vanish just because the scan after it failed.
+    if (skill.report && notices.length) renderNotices(notices);
   } else if (notices.length) {
     resetDetailError();
     els.detailError.classList.add("detail-error--warn");

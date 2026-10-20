@@ -340,6 +340,90 @@ class ScanLifecycle(unittest.TestCase):
         self.assertEqual(storage.find_by_source("s")["error"], "the real cause")
 
 
+class FailedRescanKeepsTheLastResult(unittest.TestCase):
+    """B-01: a re-scan that fails must not erase the report that is still the
+    best answer — the gate may have approved exactly that report."""
+
+    setUp = ScanLifecycle.setUp
+    tearDown = ScanLifecycle.tearDown
+    _finish = ScanLifecycle._finish
+
+    def _fail(self, source="s", error="Scan timed out after 900s", **kw):
+        return storage.upsert_scan(source=source, name="n", score=None,
+                                   verdict=None, report=None, error=error,
+                                   duration=900.0, **kw)
+
+    def test_a_failed_rescan_keeps_score_verdict_and_report(self):
+        good = self._finish(score=12)
+        storage.set_status(good["id"], "approved")
+        storage.begin_scan("s", "n")
+        row = self._fail()
+        self.assertEqual(row["score"], 12)
+        self.assertEqual(row["verdict"], "CAUTION")
+        self.assertEqual(row["report"], {"risk_assessment": {"score": 12}})
+        self.assertEqual(row["status"], "approved")
+        self.assertEqual(row["error"], "Scan timed out after 900s")
+        self.assertEqual(row["scan_state"], "done")
+
+    def test_it_remembers_when_the_kept_report_was_made(self):
+        with mock.patch.object(storage.time, "time", return_value=1000.0):
+            self._finish()
+        with mock.patch.object(storage.time, "time", return_value=5000.0):
+            storage.begin_scan("s", "n")
+            row = self._fail()
+        self.assertEqual(row["report_scanned"], 1000.0)
+        self.assertEqual(row["last_scanned"], 5000.0)
+
+    def test_a_first_scan_that_fails_has_no_report(self):
+        storage.begin_scan("s", "n")
+        row = self._fail()
+        self.assertIsNone(row["report"])
+        self.assertIsNone(row["report_scanned"])
+
+    def test_a_good_scan_after_a_failure_replaces_it(self):
+        self._finish(score=12)
+        self._fail()
+        with mock.patch.object(storage.time, "time", return_value=9000.0):
+            row = self._finish(score=30)
+        self.assertIsNone(row["error"])
+        self.assertEqual(row["score"], 30)
+        self.assertEqual(row["report_scanned"], 9000.0)
+
+    def test_an_older_database_backfills_the_report_time(self):
+        conn = storage.get_conn()
+        conn.execute("DROP TABLE skills")
+        conn.execute("""CREATE TABLE skills (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT NOT NULL, name TEXT NOT NULL, first_scanned REAL NOT NULL,
+            last_scanned REAL NOT NULL, score INTEGER, verdict TEXT,
+            status TEXT NOT NULL DEFAULT 'pending', report_json TEXT, error TEXT)""")
+        conn.execute("INSERT INTO skills (source, name, first_scanned, last_scanned,"
+                     " report_json) VALUES ('a', 'a', 1, 77, '{}'), ('b', 'b', 1, 88, NULL)")
+        conn.commit()
+        conn.close()
+        self.assertEqual(storage.find_by_source("a")["report_scanned"], 77)
+        self.assertIsNone(storage.find_by_source("b")["report_scanned"])
+
+    def test_a_failed_registry_scan_stays_a_registry_scan(self):
+        """B-02: the row's type must survive the error path."""
+        storage.begin_scan("reg", "MCP Registry", "mcp_registry")
+        with mock.patch.object(app, "_run_scan",
+                               side_effect=RuntimeError("connection reset")):
+            app._claim_scan_slot()
+            app._scan_worker("reg", "MCP Registry", "reg", use_llm=False,
+                             mcp_registry=True)
+        self.assertEqual(storage.find_by_source("reg")["target_type"], "mcp_registry")
+
+    def test_a_registry_row_lost_mid_scan_comes_back_as_one(self):
+        """If the row is deleted while the scan runs, the error insert must
+        not recreate it as a skill."""
+        with mock.patch.object(app, "_run_scan",
+                               side_effect=RuntimeError("connection reset")):
+            app._claim_scan_slot()
+            app._scan_worker("reg", "MCP Registry", "reg", use_llm=False,
+                             mcp_registry=True)
+        self.assertEqual(storage.find_by_source("reg")["target_type"], "mcp_registry")
+
+
 class VersionComparison(unittest.TestCase):
     """The update check compares numbers, not text. As strings "2.9.0" sorts
     above "2.10.0", which would hide every release in a 2.10+ line."""
