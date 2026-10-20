@@ -2507,10 +2507,14 @@ main {
   border-bottom: 1px solid var(--line);
 }
 
+/* Wraps, and a path may break anywhere: a mono path has no break
+   opportunity of its own, so "strix/skills/technologies/active_directory.md:36"
+   set the row's minimum width and pushed the page past a phone screen. */
 .finding-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
+  gap: 4px 10px;
   margin-bottom: 4px;
 }
 
@@ -2521,16 +2525,22 @@ main {
 }
 
 .finding-location {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--mono);
   font-size: var(--text-xs);
   color: var(--ink-soft);
 }
 
+/* Same reason as .finding-location: a rule name like
+   agent_skill_prompt_injection_hidden_instructions is one unbreakable word. */
 .finding-message {
   margin: 4px 0;
+  overflow-wrap: anywhere;
 }
 
 .finding-remediation {
+  overflow-wrap: anywhere;
   font-size: var(--text-sm);
   color: var(--ink-soft);
 }

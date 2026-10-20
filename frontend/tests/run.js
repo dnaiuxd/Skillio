@@ -1786,6 +1786,16 @@ test("the second-look edge colours are declared, not just mentioned", () => {
   assert.match(css, /^\.second-look\.second-look--lowered \{\n  border-left-color: var\(--ok\);\n\}/m);
 });
 
+test("a finding's header row wraps and its long words break", () => {
+  // A mono path or a rule name has no break opportunity of its own, and one
+  // pushed the detail view to 765px on a 375px phone.
+  const css = fs.readFileSync(path.join(__dirname, "..", "style.css"), "utf8");
+  assert.match(css, /^\.finding-top \{\n(?:  .*\n)*?  flex-wrap: wrap;/m);
+  for (const sel of ["finding-location", "finding-message", "finding-remediation"]) {
+    assert.match(css, new RegExp(`^\\.${sel} \\{\\n(?:  .*\\n)*?  overflow-wrap: anywhere;`, "m"), sel);
+  }
+});
+
 for (const [name, err] of failures) {
   console.error(`  FAIL  ${name}\n        ${err.message.split("\n")[0]}`);
 }
