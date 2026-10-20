@@ -2098,6 +2098,17 @@ main {
   filter: brightness(0.9);
 }
 
+/* Stands in for Install / Do Not Install when there's nothing to decide on
+   yet. Quiet ink, like .detail-error-hint: --ink-soft measures 7.35:1 on the
+   light ground and 6.15:1 on the dark one. */
+.gate-note {
+  align-self: center;
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
 .gate-current {
   display: flex;
   flex-direction: column;

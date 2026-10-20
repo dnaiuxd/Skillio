@@ -54,6 +54,7 @@ const els = {
   filesPanelList: document.getElementById("files-panel-list"),
   gateCurrent: document.getElementById("gate-current"),
   gateReset: document.getElementById("gate-reset"),
+  gateNote: document.getElementById("gate-note"),
   gateApprove: document.querySelector('.gate-btn[data-status="approved"]'),
   gateReject: document.querySelector('.gate-btn[data-status="rejected"]'),
   updateCheck: document.getElementById("update-check"),
@@ -130,6 +131,12 @@ let posting = false;        // the POST itself, before the row exists
 let pollTimer = null;
 let pendingScanId = null;   // the row to open once its scan lands
 const POLL_MS = 1500;
+// A poll that fails (the server restarting mid-scan) retries, doubling up to
+// this, rather than leaving the form locked on "Scanning…" until a reload.
+const POLL_MAX_MS = 15000;
+let pollFailures = 0;
+let lastListKey = null;     // what the log last drew, so a no-change poll is a no-op
+let detailScanState = null; // the open detail page's scan_state when drawn
 let stagedFile = null;
 let showingArchived = false;
 let updateChecking = false;
@@ -842,12 +849,62 @@ function setScanControls(busy) {
   els.scanBtn.textContent = busy ? "Scanning…" : "Scan";
 }
 
+function schedulePoll(ms) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(pollScan, ms);
+}
+
+// Always the current log, whichever tab is showing: a running scan lives
+// there, so the Archived tab can't speak to it and must not stop the poll.
+async function pollScan() {
+  try {
+    const res = await fetch(`${API}/skills?archived=false`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const skills = await res.json();
+    if (!showingArchived) renderSkillList(skills);
+    syncScanState(skills);
+  } catch (e) {
+    pollFailed();
+  }
+}
+
+// The scan's state is unknown while the server is away, so the form stays
+// locked; the next answer decides.
+function pollFailed() {
+  if (!scanning) return;
+  pollFailures++;
+  schedulePoll(Math.min(POLL_MS * 2 ** pollFailures, POLL_MAX_MS));
+}
+
+// An open detail page re-draws when its own row's scan starts or lands, so
+// it neither hides a running re-scan nor stays stale after one.
+function refreshOpenDetail(skills) {
+  if (currentSkillId == null || els.detailView.hidden) return;
+  const row = skills.find((k) => k.id === currentSkillId);
+  if (!row || (row.scan_state || "done") === detailScanState) return;
+  reloadDetail(currentSkillId);
+}
+
+async function reloadDetail(id) {
+  try {
+    const res = await fetch(`${API}/skills/${id}`);
+    if (!res.ok) return;
+    const skill = await res.json();
+    if (currentSkillId !== id || els.detailView.hidden) return;
+    renderDetail(skill);
+  } catch (e) {
+    // Leave the page as it is; the next poll tries again.
+  }
+}
+
 function syncScanState(skills) {
+  pollFailures = 0;
   scanning = skills.some(isScanning);
   setScanControls(scanning);
+  refreshOpenDetail(skills);
   clearTimeout(pollTimer);
   if (scanning) {
-    pollTimer = setTimeout(loadSkills, POLL_MS);
+    pollTimer = setTimeout(pollScan, POLL_MS);
     return;
   }
   pollTimer = null;
@@ -862,15 +919,21 @@ function syncScanState(skills) {
 }
 
 async function loadSkills() {
+  const archived = showingArchived;
   try {
-    const res = await fetch(`${API}/skills?archived=${showingArchived}`);
+    const res = await fetch(`${API}/skills?archived=${archived}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const skills = await res.json();
+    // The tab changed while this was in flight; its own load draws the list.
+    if (archived !== showingArchived) return;
     renderSkillList(skills);
     // A running scan always lives in the current log, so the archived view
-    // cannot speak to it. Polling resumes when the current tab comes back.
-    if (!showingArchived) syncScanState(skills);
+    // cannot speak to it — pollScan keeps watching the current log instead.
+    if (!archived) syncScanState(skills);
   } catch (e) {
     // Backend unreachable — checkHealth() already surfaces this in the topbar.
+    // A scan in flight keeps being polled, so the form unlocks when it's back.
+    pollFailed();
   }
 }
 
@@ -904,6 +967,18 @@ function renderLogSummary(skills) {
 }
 
 function renderSkillList(skills) {
+  // A poll during a scan usually brings back exactly the same rows. Redrawing
+  // them anyway would drop keyboard focus to <body> every 1.5 s and make a
+  // screen reader lose its place (2.4.3), so an unchanged log is left alone.
+  const key = JSON.stringify([showingArchived, skills]);
+  if (key === lastListKey) return;
+  lastListKey = key;
+  // When the rows do change, focus goes back to the same row's button.
+  const active = document.activeElement;
+  const focusId =
+    active && active.classList && active.classList.contains("row-open")
+      ? active.dataset.skillId
+      : null;
   els.skillRows.innerHTML = "";
   els.emptyState.textContent = showingArchived
     ? "Nothing archived yet. Archive a scan from its detail page to move it here."
@@ -949,6 +1024,7 @@ function renderSkillList(skills) {
 
     const openBtn = tr.querySelector(".row-open");
     openBtn.setAttribute("aria-label", `View scan details for ${s.name}`);
+    openBtn.dataset.skillId = String(s.id);
     openBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       openDetail(s.id);
@@ -959,6 +1035,7 @@ function renderSkillList(skills) {
     });
 
     els.skillRows.appendChild(tr);
+    if (focusId != null && focusId === String(s.id)) openBtn.focus();
   }
 }
 
@@ -987,11 +1064,27 @@ function renderGateCurrent(status) {
 //   undecided  -> Install / Do Not Install
 //   decided    -> Reset, so a decision stays changeable once the pair is gone
 //   archived   -> Reset, which also restores the item to the log
-function updateGateControls(archived, status) {
+//
+// The pair also needs something to decide on: no report at all (a first scan
+// that failed) or a scan still running hides it, with a line saying why. A
+// failed RE-scan keeps its previous report, and that report is exactly what
+// the decision would be about, so the pair stays there.
+function updateGateControls(skill) {
+  const { archived, status } = skill;
   const decided = status === "approved" || status === "rejected";
-  els.gateApprove.hidden = archived || decided;
-  els.gateReject.hidden = archived || decided;
-  els.gateReset.hidden = !archived && !decided;
+  const offered = !archived && !decided;
+  const why = !offered
+    ? ""
+    : isScanning(skill)
+    ? "You can decide once the scan finishes."
+    : !skill.report
+    ? "There's no report to decide on — this scan didn't finish."
+    : "";
+  els.gateApprove.hidden = !offered || !!why;
+  els.gateReject.hidden = !offered || !!why;
+  els.gateReset.hidden = offered;
+  els.gateNote.textContent = why;
+  els.gateNote.hidden = !why;
 }
 
 // Scope of the scan, stated up front: how many files it covered and whether
@@ -1596,7 +1689,8 @@ function renderDetail(skill) {
   els.archiveBtn.hidden = skill.archived;
   els.restoreBtn.hidden = !skill.archived;
   els.deleteBtn.hidden = !skill.archived;
-  updateGateControls(skill.archived, skill.status);
+  updateGateControls(skill);
+  detailScanState = skill.scan_state || "done";
 
   const sevClass = bandClass(severityBand(skill));
   els.detailScore.textContent = skill.score ?? "—";
@@ -1629,6 +1723,17 @@ function renderDetail(skill) {
   // the calls failed. Say which, rather than passing either off as a full scan.
   const meta = (skill.report && skill.report.metadata) || {};
   const notices = [];
+  // The page is re-drawn when the scan lands (refreshOpenDetail), so this is
+  // never left behind; until then the findings below are the previous scan's.
+  if (isScanning(skill)) {
+    notices.push(
+      skill.report
+        ? "Re-scan in progress. The results below are from the previous scan" +
+            (skill.report_scanned ? `, on ${fmtDate(skill.report_scanned)}` : "") +
+            ". This page updates when it finishes."
+        : "Scan in progress. Results will appear here when it finishes."
+    );
+  }
   // SkillSpector fails closed: a LOW band that would normally read SAFE is
   // downgraded to CAUTION when the scan was degraded or incomplete
   // (nodes/report.py). Without saying so, "0 · Low Risk · Caution" looks
