@@ -13,6 +13,7 @@ import re
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -730,6 +731,11 @@ class ScanCommand(unittest.TestCase):
         self.assertEqual(registry_timeout, app.MCP_REGISTRY_TIMEOUT_SECONDS)
         self.assertGreater(registry_timeout, skill_timeout)
 
+    def test_a_plain_command_runs_as_itself(self):
+        # /bin/skillspector here isn't a Python script, so there is no
+        # interpreter to hand the launcher to.
+        self.assertEqual(self._cmd(use_llm=False)[:2], ["/bin/skillspector", "scan"])
+
     def test_llm_and_registry_are_independent(self):
         with_llm = self._cmd(use_llm=True, mcp_registry=True)
         self.assertIn("--mcp-registry", with_llm)
@@ -794,6 +800,108 @@ class ScanCommand(unittest.TestCase):
             worker.join(3)
         self.assertFalse(worker.is_alive(), "the scan was still waiting")
         self.assertFalse(_alive(pid))
+
+
+class LedgerLauncher(unittest.TestCase):
+    """SkillSpector keeps 10,000 "done" receipts and counts work whose receipt
+    didn't fit as partly read; strix read as 38% when it had read 93%. Skill
+    scans go through skillspector_launch.py, which raises that ceiling."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="skillio_test_"))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    def _entry_script(self, shebang: str) -> str:
+        script = self.tmp / "skillspector"
+        script.write_text(f"{shebang}\nimport sys\n")
+        script.chmod(0o755)
+        return str(script)
+
+    def test_a_uv_entry_script_runs_through_the_launcher(self):
+        binary = self._entry_script(f"#!{sys.executable}")
+        self.assertEqual(
+            app._skillspector_argv(binary, mcp_registry=False),
+            [sys.executable, "-I", str(app.SKILLSPECTOR_LAUNCHER)],
+        )
+
+    def test_the_launcher_reaches_the_scan_command(self):
+        binary = self._entry_script(f"#!{sys.executable}")
+        seen = {}
+        fake_run = _fake_run_writing_report(seen, '{"risk_assessment": {"score": 0}}')
+        with mock.patch.object(app, "_skillspector_path", return_value=binary), \
+             mock.patch.object(app, "_run_killing_group", fake_run):
+            _run_scan("SOURCE", use_llm=False)
+        self.assertEqual(seen["cmd"][2:4], [str(app.SKILLSPECTOR_LAUNCHER), "scan"])
+        self.assertEqual(seen["cmd"][-2:], ["--", "SOURCE"])
+
+    def test_a_registry_scan_keeps_the_plain_command(self):
+        binary = self._entry_script(f"#!{sys.executable}")
+        self.assertEqual(app._skillspector_argv(binary, mcp_registry=True), [binary])
+
+    def test_anything_but_an_absolute_python_shebang_runs_as_itself(self):
+        for shebang in ("#!/usr/bin/env python3", "#!/bin/sh", "no shebang",
+                        "#!relative/python3", "#!/nonexistent/python3"):
+            binary = self._entry_script(shebang)
+            self.assertEqual(app._skillspector_argv(binary, False), [binary], shebang)
+        missing = str(self.tmp / "gone")
+        self.assertEqual(app._skillspector_argv(missing, False), [missing])
+
+    def test_a_missing_launcher_file_runs_as_itself(self):
+        binary = self._entry_script(f"#!{sys.executable}")
+        with mock.patch.object(app, "SKILLSPECTOR_LAUNCHER", self.tmp / "gone.py"):
+            self.assertEqual(app._skillspector_argv(binary, False), [binary])
+
+    def _fake_package(self, ledger_source: str) -> Path:
+        # Shaped like the real one where it matters: state.py and cli.py copy
+        # the constant by name at import, so raising it late changes nothing.
+        pkg = self.tmp / "pkgs" / "skillspector"
+        pkg.mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        (pkg / "inspection_ledger.py").write_text(ledger_source)
+        (pkg / "state.py").write_text(
+            "try:\n"
+            "    from skillspector.inspection_ledger import MAX_INSPECTION_LEDGER_EVENTS\n"
+            "except ImportError:\n"
+            "    MAX_INSPECTION_LEDGER_EVENTS = None\n"
+        )
+        (pkg / "cli.py").write_text(
+            "import json, sys\n"
+            "from skillspector import state\n"
+            "def app():\n"
+            "    print(json.dumps({'limit': state.MAX_INSPECTION_LEDGER_EVENTS,"
+            " 'argv': sys.argv}))\n"
+            "    return 7\n"
+        )
+        return pkg.parent
+
+    def _launch(self, ledger_source: str) -> tuple[dict, int]:
+        path = self._fake_package(ledger_source)
+        boot = (
+            "import runpy, sys\n"
+            f"sys.path.insert(0, {str(path)!r})\n"
+            f"sys.argv = [{str(app.SKILLSPECTOR_LAUNCHER)!r}, 'scan', '--', '-x']\n"
+            f"runpy.run_path({str(app.SKILLSPECTOR_LAUNCHER)!r}, run_name='__main__')\n"
+        )
+        proc = subprocess.run([sys.executable, "-I", "-c", boot],
+                              capture_output=True, text=True, timeout=20)
+        return json.loads(proc.stdout), proc.returncode
+
+    def test_the_ceiling_is_raised_before_skillspector_copies_it(self):
+        out, code = self._launch("MAX_INSPECTION_LEDGER_EVENTS = 10_000\n")
+        self.assertEqual(out["limit"], 100_000)
+        # Arguments pass through untouched, "--" and all, and so does the
+        # exit status — DO_NOT_INSTALL is a nonzero exit SkillSpector chose.
+        self.assertEqual(out["argv"], ["skillspector", "scan", "--", "-x"])
+        self.assertEqual(code, 7)
+
+    def test_a_larger_ceiling_is_never_lowered(self):
+        out, _ = self._launch("MAX_INSPECTION_LEDGER_EVENTS = 250_000\n")
+        self.assertEqual(out["limit"], 250_000)
+
+    def test_a_renamed_constant_still_runs_the_scan(self):
+        out, code = self._launch("SOMETHING_ELSE = 10_000\n")
+        self.assertIsNone(out["limit"])
+        self.assertEqual(code, 7)
 
 
 class SkillioVersion(unittest.TestCase):

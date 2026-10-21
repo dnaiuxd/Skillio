@@ -171,6 +171,45 @@ def _skillspector_path() -> Optional[str]:
     return shutil.which("skillspector")
 
 
+# Runs SkillSpector with its 10,000-receipt ledger raised; why is in the file.
+SKILLSPECTOR_LAUNCHER = Path(__file__).with_name("skillspector_launch.py")
+
+
+def _skillspector_python(binary: str) -> Optional[str]:
+    """The interpreter SkillSpector is installed under, read from the shebang
+    of its entry script (uv writes an absolute path there). None for anything
+    else — a compiled binary, `#!/usr/bin/env python3`, a missing file — and
+    the caller then runs the command as it is."""
+    try:
+        with open(binary, "rb") as f:
+            first = f.readline(1024)
+    except OSError:
+        return None
+    if not first.startswith(b"#!"):
+        return None
+    interp = first[2:].strip().decode("utf-8", errors="replace")
+    if (
+        not os.path.isabs(interp)
+        or " " in interp
+        or not os.path.basename(interp).startswith("python")
+        or not os.access(interp, os.X_OK)
+    ):
+        return None
+    return interp
+
+
+def _skillspector_argv(binary: str, mcp_registry: bool) -> list[str]:
+    # Skill scans only. A registry scan holds a quarter-gigabyte report and has
+    # never been measured with a larger ledger; it keeps the plain command.
+    if not mcp_registry and SKILLSPECTOR_LAUNCHER.is_file():
+        python = _skillspector_python(binary)
+        if python:
+            # -I: nothing from the environment or the working directory gets
+            # onto SkillSpector's import path.
+            return [python, "-I", str(SKILLSPECTOR_LAUNCHER)]
+    return [binary]
+
+
 def _derive_name(source: str) -> str:
     s = source.rstrip("/")
     for suffix in (".git", ".zip"):
@@ -326,7 +365,7 @@ def _run_scan(
             "Source must not start with '-'. Prefix a relative path with './'."
         )
 
-    cmd = [binary, "scan", "--format", "json"]
+    cmd = [*_skillspector_argv(binary, mcp_registry), "scan", "--format", "json"]
     if not use_llm:
         cmd.append("--no-llm")
     out_dir = None

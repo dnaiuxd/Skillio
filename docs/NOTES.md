@@ -78,6 +78,26 @@ The CLI now runs as the leader of its own process group, and a timeout kills
 the group. Being in its own group also puts it out of reach of the Ctrl+C or
 launchd stop that ends the server, so shutdown kills any scan still running.
 
+**A skill scan runs through `backend/skillspector_launch.py`, not the bare
+command.** SkillSpector writes a "done" receipt for every file × check and
+keeps at most 10,000 (`MAX_INSPECTION_LEDGER_EVENTS`, a `Final` with no
+setting, unchanged on NVIDIA main). Work whose receipt didn't fit is counted
+as partly read. usestrix/strix needs 10,192, and YARA runs last, so it lost
+313 receipts: the scan read as 38% when it had read 93%. Run file by file,
+the same YARA rules found the same 11 hits, so nothing went unchecked; the
+count was wrong. Raising SkillSpector's time limits changed nothing, because
+time was never the problem. The launcher runs under SkillSpector's own
+interpreter (read from the `skillspector` script's shebang), raises the
+ceiling to 100,000 before `state.py` and `cli.py` copy it, then calls
+SkillSpector's entry point unchanged. Measured on strix: same time, report
+1.5 KB larger. Nothing in the installed package is edited, so an upgrade
+keeps it. If a release renames the constant, or the shebang isn't an
+absolute python path, the plain command runs and the incomplete-scan notice
+says the ceiling was hit. Registry scans keep the plain command; they've
+never been measured with a larger ledger. What's left is real: on strix, 33
+files hit SkillSpector's parser span limit (NVIDIA/skillspector#694) and 3
+carry deliberately obfuscated text.
+
 **Uploads are streamed to a temp file, scanned, and deleted** — only the
 report is kept, and they're identified by a hash of their contents, so two
 unrelated files both named `skill.zip` stay separate rows instead of
