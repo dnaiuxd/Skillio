@@ -1196,6 +1196,7 @@ const COVERAGE_REASONS = {
   obfuscated_instruction_text: "some text was deliberately obfuscated",
   file_too_large: "a file was too large to read",
   binary_content: "some files were binary and couldn't be read",
+  output_limit: "a file had more matches than SkillSpector keeps",
 };
 
 // "Nothing found" and "couldn't read it" must not look the same in a security
@@ -1287,8 +1288,19 @@ function coverageNotice(report) {
   else if (full === 0) what = `couldn't fully read any of its ${total} files`;
   else what = `only fully read ${full} of its ${total} files`;
 
+  // SkillSpector keeps at most 10,000 "done" receipts (MAX_INSPECTION_LEDGER_EVENTS)
+  // and counts any work whose receipt didn't fit as partial. It marks that with
+  // one output_limit row in phase "ledger_output" — a bookkeeping limit, not
+  // unread code. On strix all 313 of YARA's "partial" files had been checked:
+  // run file by file, the same rules found the same 11 hits. So it gets its own
+  // line saying the count is understated, not a slot in the reasons list.
+  let ledgerFull = false;
   const seen = [];
   for (const ex of ac.ledger_exceptions || []) {
+    if (ex.phase === "ledger_output") {
+      ledgerFull = true;
+      continue;
+    }
     const code = ex.reason_code;
     if (code && !seen.includes(code)) seen.push(code);
   }
@@ -1300,12 +1312,28 @@ function coverageNotice(report) {
     why =
       `\nReasons: ${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]}.`;
   }
+  if (ledgerFull) {
+    why +=
+      "\nSkillSpector also ran out of room to record what it had checked, so " +
+      "some files it did check are counted as partly read. The real number " +
+      "read is higher than shown.";
+  }
+
+  // The closing line has to fit the score it sits under: "a low score means
+  // nothing was found" read as a contradiction above a 100. Anything not
+  // stated as LOW — including no band at all — gets the line that holds
+  // either way.
+  const caveat =
+    severityBand({ report, score: (report.risk_assessment || {}).score }) === "low"
+      ? "A low score here means nothing was found in the parts it could " +
+        "read, which is not the same as the skill being safe."
+      : "The score and findings below cover only the parts it could read. " +
+        "The unread parts may hold more.";
 
   // \n renders as a line break — .detail-error is white-space: pre-wrap.
   return (
     `This scan was incomplete — SkillSpector ${what}, so parts of it were ` +
-    `never checked.${why}\nA low score here means nothing was found in the ` +
-    `parts it could read, which is not the same as the skill being safe.`
+    `never checked.${why}\n${caveat}`
   );
 }
 

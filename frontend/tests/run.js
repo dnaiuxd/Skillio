@@ -261,8 +261,64 @@ test("a partial scan warns and names its reasons", () => {
                         { reason_code: "static_parse_limit" }] }));
   assert.match(out, /incomplete/);
   assert.match(out, /Reasons: some file references couldn't be followed and part of the code/);
-  // The point of the notice: a low score from an unread skill is not "safe".
+});
+
+// The closing line follows SkillSpector's band. "A low score means nothing was
+// found" sat under a 100 on strix and read as a contradiction.
+const partial = (ra) => ({
+  ...ac({ total_components: 3, fully_inspected_files: 1, partially_inspected_files: 2,
+          entirely_uninspected_files: 0, coverage_percent: 33 }),
+  ...(ra ? { risk_assessment: ra } : {}),
+});
+
+// strix: SkillSpector's 10,000-receipt ledger filled, and YARA's later files
+// counted as partial although they'd been checked. The marker is one
+// output_limit row in phase "ledger_output".
+const ledgerFull = { outcome: "partial", phase: "ledger_output", reason_code: "output_limit" };
+const fileOutputLimit = { outcome: "partial", phase: "static", reason_code: "output_limit" };
+
+test("a full SkillSpector ledger gets its own plain line, not a reason", () => {
+  const out = coverageNotice(ac({
+    total_components: 537, fully_inspected_files: 204, partially_inspected_files: 333,
+    entirely_uninspected_files: 0, coverage_percent: 38,
+    ledger_exceptions: [{ reason_code: "static_parse_limit" }, ledgerFull] }));
+  assert.match(out, /\nReason: part of the code was too complex to parse\.\n/);
+  assert.match(out, /ran out of room to record what it had checked/);
+  assert.match(out, /The real number read is higher than shown\./);
+  assert.doesNotMatch(out, /output limit/i);
+});
+
+test("a ledger-full scan with no other reason still explains itself", () => {
+  const out = coverageNotice(ac({
+    total_components: 600, fully_inspected_files: 500, partially_inspected_files: 100,
+    entirely_uninspected_files: 0, coverage_percent: 83, ledger_exceptions: [ledgerFull] }));
+  assert.doesNotMatch(out, /Reasons?:/);
+  assert.match(out, /never checked\.\nSkillSpector also ran out of room/);
+});
+
+test("a per-file output limit reads in plain words, without the ledger line", () => {
+  const out = coverageNotice(ac({
+    total_components: 3, fully_inspected_files: 2, partially_inspected_files: 1,
+    entirely_uninspected_files: 0, coverage_percent: 66, ledger_exceptions: [fileOutputLimit] }));
+  assert.match(out, /\nReason: a file had more matches than SkillSpector keeps\./);
+  assert.doesNotMatch(out, /ran out of room/);
+});
+
+test("an incomplete LOW scan says a low score isn't safe", () => {
+  const out = coverageNotice(partial({ severity: "LOW", score: 4 }));
+  assert.match(out, /\nA low score here means nothing was found/);
   assert.match(out, /not the same as the skill being safe/);
+  // A score with no stated band still counts as low.
+  assert.match(coverageNotice(partial({ score: 10 })), /\nA low score here/);
+});
+
+test("an incomplete red or medium scan never mentions a low score", () => {
+  for (const ra of [{ severity: "CRITICAL", score: 100 }, { severity: "HIGH", score: 60 },
+                    { severity: "MEDIUM", score: 30 }, null]) {
+    const out = coverageNotice(partial(ra));
+    assert.doesNotMatch(out, /low score/i);
+    assert.match(out, /\nThe score and findings below cover only the parts it could read\. The unread parts may hold more\.$/);
+  }
 });
 
 test("one reason reads 'Reason', several read 'Reasons'", () => {
